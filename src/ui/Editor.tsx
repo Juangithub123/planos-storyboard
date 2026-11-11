@@ -2,16 +2,20 @@ import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import {
   canRedo, canUndo, clip, clipId, editLayer, editProject, eraser, fingerDraws, flushProject, frame, layer, onion,
-  pencil, playing, project, redo, say, tool, toast, undo,
+  pencil, pieHoldMs, playing, project, redo, say, selection, tool, toast, undo, view,
 } from '../model/store';
 import {
-  addClip, currentPlayRange, deleteClip, openClip, preloadClip, renameClip, stepFrame, togglePlay,
+  addClip, currentPlayRange, deleteClip, deleteInstance, openClip, preloadClip, renameClip, stepFrame, togglePlay,
 } from '../model/actions';
 import type { BlendMode } from '../model/types';
 import { flushDrawings } from '../render/drawings';
 import { exportBackup } from '../storage/backup';
 import { CanvasView, fitRequest } from './CanvasView';
 import { Timeline } from './Timeline';
+import { DurationPanel } from './DurationPanel';
+import { PieMenu } from './PieMenu';
+import { SequenceView } from './SequenceView';
+import { copyInstances, duplicateClip, paste, selectAllClip, splitClipAtPlayhead } from '../model/clipboard';
 
 export const screen = signal<'projects' | 'editor'>('projects');
 const panelOpen = signal(true);
@@ -78,6 +82,17 @@ function useKeys() {
       } else if ((e.ctrlKey || e.metaKey) && k === 'y') {
         e.preventDefault();
         void redo();
+      } else if ((e.ctrlKey || e.metaKey) && k === 'c') {
+        copyInstances();
+      } else if ((e.ctrlKey || e.metaKey) && k === 'v') {
+        void paste();
+      } else if ((e.ctrlKey || e.metaKey) && k === 'a') {
+        e.preventDefault();
+        selection.value = selectAllClip();
+      } else if (k === 'delete' || k === 'backspace') {
+        deleteInstance();
+      } else if (k === 'escape') {
+        selection.value = {};
       } else if (k === ' ') {
         e.preventDefault();
         togglePlay();
@@ -114,6 +129,13 @@ function TopBar() {
         screen.value = 'projects';
       }} title="Proyectos">☰</button>
       <span class="pname">{p.name}</span>
+      <span class="seg-toggle">
+        <button class={view.value === 'clip' ? 'on' : ''} onClick={() => (view.value = 'clip')}>Clip</button>
+        <button class={view.value === 'sequence' ? 'on' : ''} onClick={() => {
+          playing.value = false;
+          view.value = 'sequence';
+        }}>Secuencia</button>
+      </span>
       <span class="sep" />
       <button onClick={() => {
         const i = p.clipOrder.indexOf(clipId.value);
@@ -127,6 +149,11 @@ function TopBar() {
         if (i < p.clipOrder.length - 1) openClip(p.clipOrder[i + 1]);
       }} title="Clip siguiente">›</button>
       <button onClick={addClip} title="Nuevo clip después del actual">+ Clip</button>
+      <button onClick={() => void splitClipAtPlayhead()} title="Cortar el clip en el cabezal">Cortar</button>
+      <button onClick={async () => {
+        const nc = await duplicateClip();
+        if (nc) openClip(nc.id);
+      }} title="Duplicar clip">Dup clip</button>
       <button onClick={() => {
         const n = prompt('Nombre del clip', c?.name);
         if (n) renameClip(n);
@@ -224,7 +251,10 @@ function SidePanel() {
       <section>
         <h4>Entrada</h4>
         <label class="check"><input type="checkbox" checked={fingerDraws.value} onChange={() => (fingerDraws.value = !fingerDraws.value)} /> Dibujar con el dedo</label>
-        <p class="hint">Con stylus: el dedo mueve/zoomea/rota. Tap con 2 dedos = deshacer, 3 = rehacer.</p>
+        <Range label="Pie menu" min={0} max={2000} step={100} value={pieHoldMs.value}
+          fmt={(v) => (v ? (v / 1000).toFixed(1) + 's' : 'off')} onInput={(v) => (pieHoldMs.value = v)} />
+        <p class="hint">Con stylus: el dedo mueve/zoomea/rota. Tap con 2 dedos = deshacer, 3 = rehacer.
+          Mantené el stylus quieto para abrir el pie menu (con mouse: click derecho).</p>
       </section>
       <section>
         <h4>Proyecto</h4>
@@ -245,6 +275,9 @@ export function Editor() {
       <CanvasView />
       {panelOpen.value && <SidePanel />}
       <Timeline />
+      <DurationPanel />
+      {view.value === 'sequence' && <SequenceView />}
+      <PieMenu />
       <Toast />
     </div>
   );

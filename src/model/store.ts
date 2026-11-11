@@ -25,6 +25,15 @@ export const autoInstance = signal(false);
 /** Para probar en PC/sin stylus: permitir dibujar con el dedo. */
 export const fingerDraws = signal(false);
 export const toast = signal<{ text: string; t: number } | null>(null);
+/** Vista del editor: el clip actual o la secuencia/storyboard. */
+export const view = signal<'clip' | 'sequence'>('clip');
+/** Modo multiselección en la timeline (taps suman/quitan, arrastre = rectángulo). */
+export const multiMode = signal(false);
+/** Cómo escalan las manijas de la selección. */
+export const scaleMode = signal<'prop' | 'delta'>('prop');
+/** Milisegundos con el stylus quieto para abrir el pie menu (0 = desactivado). */
+export const pieHoldMs = signal(1000);
+export const durationPanelOpen = signal(false);
 
 export const clip = computed<Clip | null>(() => project.value?.clips[clipId.value] ?? null);
 export const layer = computed<Layer | null>(() => clip.value?.layers.find((l) => l.id === layerId.value) ?? null);

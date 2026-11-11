@@ -2,13 +2,14 @@ import { useEffect, useRef } from 'preact/hooks';
 import { effect } from '@preact/signals';
 import {
   autoInstance, clip, clipId, commitStroke, eraser, fingerDraws, frame, layer, layerId, onion,
-  pencil, playing, project, redo, say, tool, undo, withLayer,
+  pencil, pieHoldMs, playing, project, redo, say, tool, undo, withLayer,
 } from '../model/store';
 import { instanceIndexAt, instanceStart, splitAt } from '../model/timing';
 import { uid, type Project } from '../model/types';
 import { createDrawing, drawingsVersion, markDirty, peekDrawing } from '../render/drawings';
 import { renderClipFrame, type ActiveStroke } from '../render/compositor';
 import { StrokeBuffer } from '../tools/brush';
+import { pie } from './PieMenu';
 
 interface View {
   x: number;
@@ -241,14 +242,50 @@ export function CanvasView() {
       requestRender();
     };
 
+    // ---------------- pie menu: stylus quieto un rato
+    let hold: { id: number; x: number; y: number; timer: number } | null = null;
+    const cancelHold = () => {
+      if (hold) clearTimeout(hold.timer);
+      hold = null;
+    };
+    const startHold = (e: PointerEvent) => {
+      cancelHold();
+      const ms = pieHoldMs.peek();
+      if (!ms) return;
+      const h = {
+        id: e.pointerId, x: e.clientX, y: e.clientY,
+        timer: window.setTimeout(() => {
+          if (hold !== h) return;
+          hold = null;
+          if (penId === h.id) {
+            endStroke(true);
+            penId = null;
+            try {
+              canvas.releasePointerCapture(h.id);
+            } catch {
+              /* ya liberado */
+            }
+          }
+          navigator.vibrate?.(12);
+          pie.value = { x: h.x, y: h.y };
+        }, ms),
+      };
+      hold = h;
+    };
+
     const onDown = (e: PointerEvent) => {
       if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
+        if (e.pointerType === 'mouse' && e.button === 2) {
+          pie.value = { x: e.clientX, y: e.clientY };
+          return;
+        }
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         if (e.pointerType === 'pen') penSeenAt = Date.now();
         if (penId !== null) return;
         // cancelar gestos en curso: el lápiz manda
         touches.clear();
         gesture = null;
+        if (e.pointerType === 'pen') startHold(e);
         if (beginStroke(e)) {
           penId = e.pointerId;
           canvas.setPointerCapture(e.pointerId);
@@ -275,6 +312,7 @@ export function CanvasView() {
     };
 
     const onMove = (e: PointerEvent) => {
+      if (hold && hold.id === e.pointerId && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 8) cancelHold();
       if (e.pointerId === penId) {
         addPoints(e);
         return;
@@ -288,6 +326,7 @@ export function CanvasView() {
     };
 
     const onUp = (e: PointerEvent) => {
+      if (hold?.id === e.pointerId) cancelHold();
       if (e.pointerId === penId) {
         penId = null;
         endStroke(e.type === 'pointercancel');

@@ -112,3 +112,34 @@ describe('behaviors y clip', () => {
     expect(trimRange(clip)).toEqual([2, 9]);
   });
 });
+
+import { insertInstancesAt, splitLayerAt } from './timing';
+
+describe('cortar y pegar', () => {
+  it('splitLayerAt parte una instancia que cruza el corte', () => {
+    const { left, right } = splitLayerAt(layer('a', [4, 4], 2), 4, (d) => (d ? d + '-copia' : null), mk);
+    expect(durs(left)).toEqual([2]);
+    expect(left.start).toBe(2);
+    expect(durs(right)).toEqual([2, 4]);
+    expect(right.start).toBe(0);
+    expect(right.instances[0].drawingId).toBe('ad0-copia');
+    expect(right.instances[1].drawingId).toBe('ad1');
+  });
+  it('splitLayerAt con la capa empezando después del corte', () => {
+    const { left, right } = splitLayerAt(layer('a', [3], 10), 4, (d) => d, mk);
+    expect(left.instances.length).toBe(0);
+    expect(right.start).toBe(6);
+  });
+  it('insertInstancesAt en el medio parte y hace ripple', () => {
+    const items = [{ id: 'x', duration: 2, drawingId: 'X' }];
+    const r = insertInstancesAt(layer('a', [4, 2]), 2, items, mk);
+    expect(durs(r.layer)).toEqual([2, 2, 2, 2]);
+    expect(r.first).toBe(1);
+    expect(r.layer.instances[1].drawingId).toBe('X');
+    expect(r.layer.instances[2].drawingId).toBe('ad0');
+  });
+  it('insertInstancesAt después del final agrega hueco', () => {
+    const r = insertInstancesAt(layer('a', [2]), 4, [{ id: 'x', duration: 1, drawingId: 'X' }], mk);
+    expect(durs(r.layer)).toEqual([2, 2, 1]);
+  });
+});

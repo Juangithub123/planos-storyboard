@@ -2,7 +2,7 @@ import {
   clip, clipId, commit, editClip, editLayer, frame, layer, layerId, makeClip, makeLayer, playing,
   project, say, selection, withClip, withLayer,
 } from './store';
-import { insertInstance, instanceIndexAt, instanceStart, layerEnd, removeInstance, setDuration, splitAt } from './timing';
+import { addEach, insertInstance, instanceIndexAt, instanceStart, layerEnd, removeInstance, setDuration, splitAt } from './timing';
 import { clipLength, playRange, resolveAt } from './evaluate';
 import { uid, type Behavior } from './types';
 import { createDrawing, loadDrawing } from '../render/drawings';
@@ -145,18 +145,37 @@ export function insertEmptyAfter() {
 
 export function deleteInstance() {
   const p = project.peek();
+  const c = clip.peek();
   const L = layer.peek();
-  const idx = targetIndex();
-  if (!p || !L || idx < 0) return;
-  const sel = selection.peek()[L.id];
-  const idxs = sel?.length ? [...sel].sort((a, b) => b - a) : [idx];
-  let nl = L;
-  for (const k of idxs) nl = removeInstance(nl, k);
-  commit(withLayer(p, clipId.peek(), L.id, () => nl), 'borrar instancia');
+  if (!p || !c || !L) return;
+  const sel = selection.peek();
+  const has = Object.values(sel).some((a) => a.length);
+  if (!has) {
+    const idx = targetIndex();
+    if (idx < 0 || L.locked) return;
+    commit(withLayer(p, c.id, L.id, (l) => removeInstance(l, idx)), 'borrar instancia');
+  } else {
+    const layers = c.layers.map((l) => {
+      const idxs = sel[l.id];
+      if (!idxs?.length || l.locked) return l;
+      let nl = l;
+      for (const k of [...new Set(idxs)].sort((a, b) => b - a)) if (k < nl.instances.length) nl = removeInstance(nl, k);
+      return nl;
+    });
+    commit(withClip(p, c.id, (cc) => ({ ...cc, layers })), 'borrar instancias');
+  }
   selection.value = {};
 }
 
 export function nudgeDuration(d: number) {
+  const p = project.peek();
+  const c = clip.peek();
+  const sel = selection.peek();
+  if (p && c && Object.values(sel).reduce((n, a) => n + a.length, 0) > 1) {
+    const s = Object.fromEntries(Object.entries(sel).filter(([lid]) => !c.layers.find((l) => l.id === lid)?.locked));
+    commit(withClip(p, c.id, (cc) => ({ ...cc, layers: addEach(cc.layers, s, d) })), 'duración');
+    return;
+  }
   const L = layer.peek();
   const idx = targetIndex();
   if (!L || idx < 0) return;

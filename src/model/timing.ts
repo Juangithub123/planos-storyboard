@@ -218,3 +218,76 @@ function mapSelected(layers: Layer[], sel: Selection, fn: (d: number) => number)
     return withInstances(l, inst);
   });
 }
+
+/**
+ * Parte una capa en el frame `f` (para cortar un clip en dos).
+ * Devuelve la parte izquierda (todo lo anterior a f) y la derecha (desde f, re-basada a 0).
+ * Si una instancia cruza el corte, la parte derecha recibe `rightDrawing(drawingId)`
+ * (para duplicar el dibujo y que los clips no compartan imágenes).
+ */
+export function splitLayerAt(
+  layer: Layer,
+  f: number,
+  rightDrawing: (id: Id | null) => Id | null,
+  makeId: () => Id,
+): { left: Layer; right: Layer } {
+  const left: Instance[] = [];
+  const right: Instance[] = [];
+  let t = layer.start;
+  let rightStart = Math.max(0, layer.start - f);
+  for (const it of layer.instances) {
+    const a = t;
+    const b = t + it.duration;
+    t = b;
+    if (b <= f) left.push(it);
+    else if (a >= f) right.push(it);
+    else {
+      left.push({ ...it, duration: f - a });
+      right.push({ id: makeId(), duration: b - f, drawingId: rightDrawing(it.drawingId) });
+    }
+  }
+  if (layer.start >= f) rightStart = layer.start - f;
+  return {
+    left: { ...layer, instances: left, start: left.length ? layer.start : 0 },
+    right: { ...layer, id: makeId(), instances: right, start: right.length ? rightStart : 0 },
+  };
+}
+
+/** Inserta instancias en el frame f de la capa (partiendo si cae en medio). Ripple del resto. */
+export function insertInstancesAt(layer: Layer, f: number, items: Instance[], makeId: () => Id): { layer: Layer; first: number } {
+  if (!items.length) return { layer, first: -1 };
+  const end = layerEnd(layer);
+  let base = layer;
+  let at: number;
+  if (!layer.instances.length) {
+    return { layer: { ...layer, start: f, instances: items.slice() }, first: 0 };
+  }
+  if (f >= end) {
+    const inst = layer.instances.slice();
+    if (f > end) inst.push({ id: makeId(), duration: f - end, drawingId: null });
+    at = inst.length;
+    inst.push(...items);
+    return { layer: { ...layer, instances: inst }, first: at };
+  }
+  if (f < layer.start) {
+    const gap = layer.start - f;
+    const pre = [...items];
+    const tot = items.reduce((s, i) => s + i.duration, 0);
+    if (gap > 0) pre.push({ id: makeId(), duration: gap, drawingId: null });
+    void tot;
+    return { layer: { ...layer, start: f, instances: [...pre, ...layer.instances] }, first: 0 };
+  }
+  const idx = instanceIndexAt(layer, f);
+  if (instanceStart(layer, idx) === f) at = idx;
+  else {
+    const cur = layer.instances[idx];
+    const first = f - instanceStart(layer, idx);
+    const inst = layer.instances.slice();
+    inst.splice(idx, 1, { ...cur, duration: first }, { ...cur, id: makeId(), duration: cur.duration - first });
+    base = { ...layer, instances: inst };
+    at = idx + 1;
+  }
+  const inst = base.instances.slice();
+  inst.splice(at, 0, ...items);
+  return { layer: { ...base, instances: inst }, first: at };
+}
