@@ -55,7 +55,7 @@ export function CanvasView() {
       const o = onion.peek();
       renderClipFrame(
         ctx, c, frame.peek(), p.width, p.height, active,
-        o.enabled && !playing.peek() ? { ...o, layerId: layerId.peek() } : null,
+        o.enabled && !playing.peek() ? { ...o, layerId: o.allLayers ? null : layerId.peek() } : null,
       );
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.strokeStyle = 'rgba(0,0,0,.6)';
@@ -379,7 +379,8 @@ export function CanvasView() {
   }, []);
 
   return (
-    <div class="canvas-wrap" ref={wrap}>
+    <div class="canvas-wrap" ref={wrap} data-help="Lienzo" data-help-docs="gestos"
+      data-help-text="Dibujás con el stylus en la capa y el frame actuales. Con los dedos: 1 dedo mueve, 2 dedos hacen zoom/rotan; tap con 2 dedos = deshacer, 3 = rehacer. Stylus quieto ~1 s = pie menu.">
       <canvas ref={cv} class="stage" />
     </div>
   );

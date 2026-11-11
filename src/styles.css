@@ -203,3 +203,55 @@ input[type=text], input:not([type]) { background: var(--bg3); border: 1px solid 
 .cmeta .hint { margin: 0; white-space: nowrap; }
 .cbtns { display: flex; gap: 4px; padding: 6px 8px 8px; flex-wrap: wrap; }
 .cbtns button { min-height: 30px; padding: 0 7px; font-size: 12px; }
+
+/* ---------- ayuda */
+.hg { display: inline-flex; gap: 5px; align-items: center; }
+.helpbtn { background: #2e3a5c; border-color: var(--accent2); font-weight: 700; }
+.help-overlay { position: fixed; inset: 0; z-index: 30; background: #0008; touch-action: none; }
+.help-box { position: fixed; border: 2px solid var(--accent2); border-radius: 6px; background: #8fa3ff10; cursor: pointer; }
+.help-box.on { border-color: var(--accent); background: #f2b84b22; box-shadow: 0 0 0 9999px #0006; z-index: 1; }
+.help-badge { position: absolute; left: -9px; top: -9px; min-width: 22px; height: 22px; border-radius: 11px; background: var(--accent2); color: #111;
+  font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-shadow: 0 1px 4px #000a; }
+.help-box.on .help-badge { background: var(--accent); }
+.help-badge.static { position: static; flex-shrink: 0; }
+.help-tag { position: absolute; left: 16px; top: -11px; background: var(--accent); color: #111; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+.help-card { position: fixed; right: 12px; top: 56px; bottom: 12px; width: min(380px, calc(100vw - 24px)); z-index: 2; background: var(--bg2);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 30px #000c; display: flex; flex-direction: column; padding: 10px 12px; }
+.help-card.left { right: auto; left: 12px; }
+.hc-head { display: flex; align-items: center; gap: 6px; }
+.hc-head b { flex: 1; }
+.hc-list { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.hc-item { display: flex; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; }
+.hc-item.on { background: #3a3220; outline: 1px solid var(--accent); }
+.hc-item p { margin: 3px 0 0; color: var(--fg2); font-size: 13px; line-height: 1.4; }
+.hc-item a { display: inline-block; margin-top: 4px; color: var(--accent2); font-size: 13px; text-decoration: underline; }
+
+/* ---------- documentación */
+.docs-overlay { position: fixed; inset: 0; z-index: 40; background: #000a; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.docs { width: min(980px, 100%); height: min(720px, 100%); background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; display: flex; overflow: hidden;
+  -webkit-user-select: text; user-select: text; }
+.docs nav { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); padding: 12px 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.docs nav b { padding: 4px 8px 8px; color: var(--accent); }
+.docs nav button { justify-content: flex-start; text-align: left; white-space: normal; background: transparent; border-color: transparent; min-height: 32px; }
+.docs nav button.on { background: var(--bg3); border-color: var(--line); color: var(--accent); }
+.docs article { flex: 1; overflow-y: auto; padding: 14px 22px 22px; line-height: 1.55; font-size: 15px; }
+.docs-head { display: flex; align-items: center; justify-content: space-between; }
+.docs h2 { margin: 6px 0 10px; font-size: 20px; }
+.docs ul { padding-left: 20px; }
+.docs li { margin: 6px 0; }
+.docs code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; }
+.docs-nav { display: flex; gap: 8px; margin-top: 24px; border-top: 1px solid var(--line); padding-top: 12px; }
+kbd { background: var(--bg3); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font: 12px/1.6 ui-monospace, monospace; }
+.keys td { padding: 5px 14px 5px 0; }
+@media (max-width: 700px) {
+  .docs { flex-direction: column; }
+  .docs nav { width: auto; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--line); }
+  .docs nav b { display: none; }
+  .docs nav button { white-space: nowrap; }
+}
+.help-card.mini { bottom: auto; }
+.help-card.mini .hc-head b { font-size: 13px; }
+.help-bubble { position: fixed; z-index: 3; background: #2b2a24; border: 2px solid var(--accent); border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 30px #000c; }
+.help-bubble b { display: flex; align-items: center; gap: 8px; }
+.help-bubble p { margin: 6px 0 0; font-size: 14px; line-height: 1.45; }
+.help-bubble a { display: inline-block; margin-top: 6px; color: var(--accent2); text-decoration: underline; cursor: pointer; }

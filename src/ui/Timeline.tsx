@@ -412,7 +412,8 @@ export function Timeline() {
   return (
     <div class="timeline">
       <div class="tl-bar">
-        <div class="grp">
+        <div class="grp" data-help="Transporte" data-help-docs="timeline"
+          data-help-text="Inicio, instancia anterior, frame anterior, play/pausa (espacio, loopea entre Mark In/Out), frame siguiente, instancia siguiente y final. El contador muestra frame actual / largo del clip.">
           <button onClick={gotoStart} title="Inicio">⏮</button>
           <button onClick={() => stepInstance(-1)} title="Instancia anterior">⇤</button>
           <button onClick={() => stepFrame(-1)} title="Frame anterior">◀</button>
@@ -422,7 +423,8 @@ export function Timeline() {
           <button onClick={gotoEnd} title="Final">⏭</button>
           <span class="counter">{f + 1}<small> / {len}</small></span>
         </div>
-        <div class="grp">
+        <div class="grp" data-help="Selección y escalado" data-help-docs="seleccion"
+          data-help-text="Multi: los toques suman/quitan y arrastrar hace un rectángulo. Todo: selecciona el clip. Prop/Delta: cómo escalan las manijas azules de la selección. Duración…: panel numérico.">
           <button class={multiMode.value ? 'on' : ''} onClick={() => (multiMode.value = !multiMode.value)}
             title="Multiselección: tap suma/quita, arrastrar = rectángulo">Multi</button>
           <button onClick={() => (selection.value = selectAllClip())} title="Seleccionar todo el clip">Todo</button>
@@ -432,7 +434,8 @@ export function Timeline() {
             title="Panel de duración">Duración…</button>
           {info.count > 0 && <span class="selinfo">{info.count} sel · {info.span}f</span>}
         </div>
-        <div class="grp">
+        <div class="grp" data-help="Instancias" data-help-docs="timeline"
+          data-help-text="+ Inst (vacía en el cabezal), Dup (duplica el dibujo), Vacía (hueco después), Borrar, −1/+1 frame, Hold (sostener la capa hasta el final), Copiar y Pegar.">
           <button onClick={newInstanceHere} title="Nueva instancia en el cabezal">+ Inst</button>
           <button onClick={() => void duplicateInstance()} title="Duplicar instancia">Dup</button>
           <button onClick={insertEmptyAfter} title="Insertar instancia vacía después">Vacía</button>
@@ -443,7 +446,8 @@ export function Timeline() {
           <button onClick={copyInstances} title="Copiar instancias seleccionadas">Copiar</button>
           <button onClick={() => void paste()} title="Pegar en el cabezal (instancias, capa o clip)">Pegar</button>
         </div>
-        <div class="grp">
+        <div class="grp" data-help="Mark In/Out y recorte" data-help-docs="marks"
+          data-help-text="In/Out: rango de loop al reproducir mientras animás (no cambia el clip). [ Rec / Rec ]: recorte que define qué parte del clip entra al animatic. ✕ borra cada uno.">
           <button onClick={() => markPlay('in')} title="Mark In (loop de reproducción)">In</button>
           <button onClick={() => markPlay('out')} title="Mark Out (loop de reproducción)">Out</button>
           <button onClick={clearPlayMarks} disabled={!hasPlay} title="Borrar Mark In/Out">✕</button>
@@ -452,13 +456,15 @@ export function Timeline() {
           <button class="trim" onClick={() => markTrim('out')} title="Recorte Out (entra al animatic)">Rec ]</button>
           <button onClick={clearTrim} disabled={!hasTrim} title="Borrar recorte">✕</button>
         </div>
-        <div class="grp">
+        <div class="grp" data-help="Auto-instancia y cebolla" data-help-docs="dibujo"
+          data-help-text="Auto-inst: al dibujar en medio de una instancia sostenida, la parte y crea una nueva en el cabezal. Cebolla: muestra dibujos anteriores (rojo) y siguientes (verde).">
           <button class={autoInstance.value ? 'on' : ''} onClick={() => (autoInstance.value = !autoInstance.value)}
             title="Al dibujar en medio de una instancia, crear una nueva en el cabezal">Auto-inst</button>
           <button class={onion.value.enabled ? 'on' : ''} onClick={() => (onion.value = { ...onion.value, enabled: !onion.value.enabled })}
             title="Papel cebolla">Cebolla</button>
         </div>
-        <div class="grp">
+        <div class="grp" data-help="Capas y zoom" data-help-docs="capas"
+          data-help-text="+ Capa, subir/bajar la capa actual, Copiar capa (luego Pegar), − Capa. Los − / + del final cambian el zoom de la timeline.">
           <button onClick={addLayer} title="Nueva capa">+ Capa</button>
           <button onClick={() => moveLayer(-1)} title="Subir capa">↑</button>
           <button onClick={() => moveLayer(1)} title="Bajar capa">↓</button>
@@ -473,7 +479,8 @@ export function Timeline() {
         <div class="tl-inner" style={px({ width: HEAD_W + cols * w })}>
           <div class="tl-ruler-row">
             <div class="corner" style={px({ width: HEAD_W })}>{c.name}</div>
-            <div class="ruler" style={px({ width: cols * w })}
+            <div class="ruler" data-help="Regla" data-help-docs="timeline"
+              data-help-text="Tocá o arrastrá para mover el cabezal. Barra azul: Mark In/Out. Sombreado: fuera del recorte. Línea amarilla: final del clip." style={px({ width: cols * w })}
               onPointerDown={onRulerDown} onPointerMove={onRulerMove} onPointerUp={onRulerUp} onPointerCancel={onRulerUp}>
               {ruler}
               {hasTrim && <div class="trim-shade" style={px({ left: 0, width: ta * w })} />}
@@ -484,10 +491,13 @@ export function Timeline() {
             </div>
           </div>
           <div class="tl-rows">
-            <div class="heads" style={px({ width: HEAD_W })}>
+            <div class="heads" data-help="Encabezados de capa" data-help-docs="capas"
+              data-help-text="◉ visibilidad, 🔓 bloqueo, nombre (doble toque para renombrar) y comportamiento antes/después de las instancias: Cut, Hold o Loop. Tocá una capa para que sea la actual." style={px({ width: HEAD_W })}>
               {c.layers.map((l) => <LayerHeader key={l.id} L={l} active={l.id === layerId.value} />)}
             </div>
-            <div class={'tracks' + (multiMode.value ? ' multi' : '')} ref={tracksRef} style={px({ width: cols * w })}
+            <div data-help="Instancias en la timeline" data-help-docs="timeline"
+              data-help-text="Cada bloque es una instancia y el número es su duración. Manija gris derecha: estirar/acortar (ripple). Arrastrar una instancia seleccionada: reordenar (táctil: mantener presionado). Con varias seleccionadas aparecen manijas azules para escalar."
+              class={'tracks' + (multiMode.value ? ' multi' : '')} ref={tracksRef} style={px({ width: cols * w })}
               onPointerDown={onTracksDown} onPointerMove={onTracksMove} onPointerUp={onTracksUp} onPointerCancel={onTracksUp}>
               {c.layers.map((l) => (
                 <LayerTrack key={l.id} L={l} len={len} active={l.id === layerId.value} sel={sel[l.id] ?? []} />

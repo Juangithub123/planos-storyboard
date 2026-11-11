@@ -1,5 +1,6 @@
 import type { BlendMode, Clip, Id } from '../model/types';
 import { resolveAt } from '../model/evaluate';
+import { instanceIndexAt } from '../model/timing';
 import { peekDrawing } from './drawings';
 
 export const blendOp: Record<BlendMode, GlobalCompositeOperation> = {
@@ -22,7 +23,8 @@ export interface ActiveStroke {
 }
 
 export interface OnionOpts {
-  layerId: Id;
+  /** null = todas las capas visibles */
+  layerId: Id | null;
   before: number;
   after: number;
   opacity: number;
@@ -73,10 +75,12 @@ export function renderClipFrame(
     const L = clip.layers[li];
     if (!L.visible) continue;
 
-    if (onion && onion.layerId === L.id && L.instances.length) {
-      const r = resolveAt(L, frame);
-      const base = r?.index ?? -1;
-      if (base >= 0) {
+    if (onion && (onion.layerId === null || onion.layerId === L.id) && L.instances.length) {
+      // posición en la línea de tiempo (sin behaviors): fuera de la capa usamos un índice virtual,
+      // así en un frame vacío después del final se ven los dibujos anteriores (donde vas a dibujar el siguiente)
+      let base = instanceIndexAt(L, frame);
+      if (base < 0) base = frame < L.start ? -1 : L.instances.length;
+      {
         const draw = (dir: -1 | 1, n: number, color: string) => {
           let k = base;
           for (let step = 1; step <= n; step++) {

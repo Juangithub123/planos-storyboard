@@ -5,6 +5,7 @@ import { deleteProject, listProjects, putProject, requestPersistence } from '../
 import { collectGarbage, exportBackup, importBackup } from '../storage/backup';
 import { initDrawings } from '../render/drawings';
 import { screen } from './Editor';
+import { DocsModal, docsOpen } from './Help';
 
 const PRESETS = [
   { label: '1920×1080 (16:9 HD)', w: 1920, h: 1080 },
@@ -59,7 +60,10 @@ export function ProjectList() {
   return (
     <div class="projects">
       <header>
-        <h1>Planos</h1>
+        <div class="card-head">
+          <h1>Planos</h1>
+          <button onClick={() => (docsOpen.value = 'inicio')}>📖︎ Documentación</button>
+        </div>
         <p>Storyboard y animatic. Todo se guarda en este dispositivo, sin conexión.</p>
         {persisted === false && (
           <p class="warn-text">
@@ -117,6 +121,7 @@ export function ProjectList() {
           </ul>
         )}
       </section>
+      <DocsModal />
     </div>
   );
 }

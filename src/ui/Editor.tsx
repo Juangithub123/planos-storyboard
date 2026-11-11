@@ -11,6 +11,7 @@ import type { BlendMode } from '../model/types';
 import { flushDrawings } from '../render/drawings';
 import { exportBackup } from '../storage/backup';
 import { CanvasView, fitRequest } from './CanvasView';
+import { DocsModal, HelpOverlay, docsOpen, helpOpen } from './Help';
 import { Timeline } from './Timeline';
 import { DurationPanel } from './DurationPanel';
 import { PieMenu } from './PieMenu';
@@ -122,14 +123,18 @@ function TopBar() {
   const needsBackup = Date.now() - p.lastBackupAt > BACKUP_EVERY && p.updatedAt > p.lastBackupAt;
   return (
     <div class="topbar">
-      <button onClick={async () => {
-        playing.value = false;
-        await flushDrawings();
-        await flushProject();
-        screen.value = 'projects';
-      }} title="Proyectos">☰</button>
-      <span class="pname">{p.name}</span>
-      <span class="seg-toggle">
+      <span class="hg" data-help="Proyectos" data-help-docs="proyectos"
+        data-help-text="Vuelve a la lista de proyectos (guarda todo antes). Ahí podés crear, importar, hacer backup o borrar proyectos.">
+        <button onClick={async () => {
+          playing.value = false;
+          await flushDrawings();
+          await flushProject();
+          screen.value = 'projects';
+        }} title="Proyectos">☰</button>
+        <span class="pname">{p.name}</span>
+      </span>
+      <span class="seg-toggle" data-help="Clip / Secuencia" data-help-docs="clips"
+        data-help-text="Clip: editás el plano actual (dibujo + timeline). Secuencia: ves y reproducís el animatic entero y reordenás los planos en el storyboard.">
         <button class={view.value === 'clip' ? 'on' : ''} onClick={() => (view.value = 'clip')}>Clip</button>
         <button class={view.value === 'sequence' ? 'on' : ''} onClick={() => {
           playing.value = false;
@@ -137,17 +142,22 @@ function TopBar() {
         }}>Secuencia</button>
       </span>
       <span class="sep" />
-      <button onClick={() => {
-        const i = p.clipOrder.indexOf(clipId.value);
-        if (i > 0) openClip(p.clipOrder[i - 1]);
-      }} title="Clip anterior">‹</button>
-      <select class="clipsel" value={clipId.value} onChange={(e) => openClip((e.target as HTMLSelectElement).value)}>
-        {p.clipOrder.map((id, i) => <option value={id}>{i + 1}. {p.clips[id].name}</option>)}
-      </select>
-      <button onClick={() => {
-        const i = p.clipOrder.indexOf(clipId.value);
-        if (i < p.clipOrder.length - 1) openClip(p.clipOrder[i + 1]);
-      }} title="Clip siguiente">›</button>
+      <span class="hg" data-help="Clip actual" data-help-docs="clips"
+        data-help-text="‹ › y el selector cambian de clip. El número es el orden del plano en la secuencia.">
+        <button onClick={() => {
+          const i = p.clipOrder.indexOf(clipId.value);
+          if (i > 0) openClip(p.clipOrder[i - 1]);
+        }} title="Clip anterior">‹</button>
+        <select class="clipsel" value={clipId.value} onChange={(e) => openClip((e.target as HTMLSelectElement).value)}>
+          {p.clipOrder.map((id, i) => <option value={id}>{i + 1}. {p.clips[id].name}</option>)}
+        </select>
+        <button onClick={() => {
+          const i = p.clipOrder.indexOf(clipId.value);
+          if (i < p.clipOrder.length - 1) openClip(p.clipOrder[i + 1]);
+        }} title="Clip siguiente">›</button>
+      </span>
+      <span class="hg" data-help="Operaciones de clip" data-help-docs="clips"
+        data-help-text="+ Clip crea uno nuevo después del actual. Cortar parte el clip en el cabezal en dos clips. Dup clip lo duplica entero (con copias de los dibujos). Renombrar y − Clip (borrar).">
       <button onClick={addClip} title="Nuevo clip después del actual">+ Clip</button>
       <button onClick={() => void splitClipAtPlayhead()} title="Cortar el clip en el cabezal">Cortar</button>
       <button onClick={async () => {
@@ -159,20 +169,34 @@ function TopBar() {
         if (n) renameClip(n);
       }} title="Renombrar clip">Renombrar</button>
       <button onClick={() => confirm('¿Borrar este clip?') && deleteClip()} title="Borrar clip">− Clip</button>
+      </span>
       <span class="grow" />
-      <button disabled={!canUndo.value} onClick={() => void undo()} title="Deshacer (tap 2 dedos)">↶</button>
-      <button disabled={!canRedo.value} onClick={() => void redo()} title="Rehacer (tap 3 dedos)">↷</button>
-      <button onClick={() => fitRequest.fn()} title="Encuadrar canvas">⤢</button>
-      <button class={needsBackup ? 'warn' : ''} onClick={() => void doBackup()}
+      <span class="hg" data-help="Deshacer / rehacer" data-help-docs="gestos"
+        data-help-text="También con tap de 2 dedos (deshacer) y 3 dedos (rehacer) sobre el lienzo, o Ctrl+Z / Ctrl+Y.">
+        <button disabled={!canUndo.value} onClick={() => void undo()} title="Deshacer (tap 2 dedos)">↶</button>
+        <button disabled={!canRedo.value} onClick={() => void redo()} title="Rehacer (tap 3 dedos)">↷</button>
+      </span>
+      <button onClick={() => fitRequest.fn()} title="Encuadrar canvas" data-help="Encuadrar"
+        data-help-text="Vuelve a centrar y ajustar el lienzo a la pantalla (sin rotación).">⤢</button>
+      <button class={needsBackup ? 'warn' : ''} onClick={() => void doBackup()} data-help="Backup" data-help-docs="proyectos"
+        data-help-text="Descarga un .planos.zip con todo el proyecto. Se pone rojo si pasó más de un día con cambios sin backup. Se importa desde la lista de proyectos."
         title="Descargar backup .zip del proyecto">{needsBackup ? 'Backup!' : 'Backup'}</button>
-      <button class={panelOpen.value ? 'on' : ''} onClick={() => (panelOpen.value = !panelOpen.value)} title="Panel">⚙</button>
+      <button class={panelOpen.value ? 'on' : ''} onClick={() => (panelOpen.value = !panelOpen.value)} title="Panel"
+        data-help="Panel lateral" data-help-text="Muestra u oculta el panel de la derecha (opciones de herramienta, capa, papel cebolla y entrada).">⚙</button>
+      <span class="hg" data-help="Ayuda" data-help-docs="inicio"
+        data-help-text="? muestra esta guía sobre la app. 📖 abre la documentación completa.">
+        <button class="helpbtn" onClick={() => (helpOpen.value = true)} title="Ayuda: qué es cada cosa">?</button>
+        <button onClick={() => (docsOpen.value = 'inicio')} title="Documentación">📖︎</button>
+      </span>
     </div>
   );
 }
 
 function ToolBar() {
   return (
-    <div class="toolbar">
+    <div class="toolbar" data-help="Herramientas" data-help-docs="dibujo"
+      data-help-text="✎ lápiz (B) y ⌫ goma (E). El círculo muestra el color actual. Las opciones de cada una están en el panel lateral.">
+
       <button class={tool.value === 'pencil' ? 'on' : ''} onClick={() => (tool.value = 'pencil')} title="Lápiz (B)">✎</button>
       <button class={tool.value === 'eraser' ? 'on' : ''} onClick={() => (tool.value = 'eraser')} title="Goma (E)">⌫</button>
       <div class="swatch-big" style={{ background: pencil.value.color }} />
@@ -201,7 +225,7 @@ function SidePanel() {
   return (
     <div class="side">
       {tool.value === 'pencil' ? (
-        <section>
+        <section data-help="Opciones del lápiz" data-help-docs="dibujo" data-help-text="Tamaño, opacidad, si la presión del stylus cambia el grosor, color y paleta del proyecto (+ agrega el color actual; mantener presionado un color lo quita).">
           <h4>Lápiz</h4>
           <Range label="Tamaño" min={1} max={120} value={pc.size} onInput={(v) => (pencil.value = { ...pc, size: v })} />
           <Range label="Opacidad" min={0.05} max={1} step={0.05} value={pc.opacity} fmt={pct} onInput={(v) => (pencil.value = { ...pc, opacity: v })} />
@@ -221,7 +245,7 @@ function SidePanel() {
           </div>
         </section>
       ) : (
-        <section>
+        <section data-help="Opciones de la goma" data-help-docs="dibujo" data-help-text="Tamaño, fuerza y presión de la goma.">
           <h4>Goma</h4>
           <Range label="Tamaño" min={2} max={250} value={er.size} onInput={(v) => (eraser.value = { ...er, size: v })} />
           <Range label="Fuerza" min={0.05} max={1} step={0.05} value={er.opacity} fmt={pct} onInput={(v) => (eraser.value = { ...er, opacity: v })} />
@@ -229,7 +253,7 @@ function SidePanel() {
         </section>
       )}
       {L && (
-        <section>
+        <section data-help="Capa actual" data-help-docs="capas" data-help-text="Opacidad y modo de fusión (multiplicar, trama, etc.) de la capa seleccionada en la timeline.">
           <h4>Capa: {L.name}</h4>
           <Range label="Opacidad" min={0} max={1} step={0.05} value={L.opacity} fmt={pct}
             onInput={(v) => editLayer('opacidad', (l) => ({ ...l, opacity: v }))} />
@@ -241,14 +265,15 @@ function SidePanel() {
           </label>
         </section>
       )}
-      <section>
+      <section data-help="Papel cebolla" data-help-docs="cebolla" data-help-text="Cuántos dibujos antes (rojo) y después (verde) mostrar, su opacidad, y si se aplica sólo a la capa actual o a todas.">
         <h4>Papel cebolla</h4>
         <label class="check"><input type="checkbox" checked={o.enabled} onChange={() => (onion.value = { ...o, enabled: !o.enabled })} /> Activado</label>
+        <label class="check"><input type="checkbox" checked={o.allLayers} onChange={() => (onion.value = { ...o, allLayers: !o.allLayers })} /> Todas las capas (no sólo la actual)</label>
         <Range label="Antes" min={0} max={5} value={o.before} onInput={(v) => (onion.value = { ...o, before: v })} />
         <Range label="Después" min={0} max={5} value={o.after} onInput={(v) => (onion.value = { ...o, after: v })} />
         <Range label="Opacidad" min={0.05} max={1} step={0.05} value={o.opacity} fmt={pct} onInput={(v) => (onion.value = { ...o, opacity: v })} />
       </section>
-      <section>
+      <section data-help="Entrada" data-help-docs="gestos" data-help-text="Dibujar con el dedo (si no tenés el stylus) y el tiempo de espera del pie menu (stylus quieto en el lienzo).">
         <h4>Entrada</h4>
         <label class="check"><input type="checkbox" checked={fingerDraws.value} onChange={() => (fingerDraws.value = !fingerDraws.value)} /> Dibujar con el dedo</label>
         <Range label="Pie menu" min={0} max={2000} step={100} value={pieHoldMs.value}
@@ -273,6 +298,8 @@ export function Editor() {
       <TopBar />
       <ToolBar />
       <CanvasView />
+      <HelpOverlay />
+      <DocsModal />
       {panelOpen.value && <SidePanel />}
       <Timeline />
       <DurationPanel />

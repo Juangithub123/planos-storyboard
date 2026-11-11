@@ -122,8 +122,8 @@ function Player() {
 
   return (
     <div class="player">
-      <div class="player-stage" ref={wrap}><canvas ref={ref} /></div>
-      <div class="player-bar">
+      <div class="player-stage" ref={wrap} data-help="Visor del animatic" data-help-docs="clips" data-help-text="Muestra la secuencia completa: cada clip con su recorte, uno tras otro."><canvas ref={ref} /></div>
+      <div class="player-bar" data-help="Reproducción" data-help-docs="clips" data-help-text="Play/pausa e inicio. Timecode actual / total (min:seg:frames), el plano que se está viendo y la duración total.">
         <button class="play" onClick={() => (seqPlaying.value = !seqPlaying.value)}>{seqPlaying.value ? '❚❚' : '▶'}</button>
         <button onClick={() => (seqFrame.value = 0)} title="Inicio">⏮</button>
         <span class="counter">{tc(gf, p.fps)}<small> / {tc(total, p.fps)}</small></span>
@@ -131,7 +131,7 @@ function Player() {
         <span class="grow" />
         <span class="hint">{total} frames · {(total / p.fps).toFixed(1)} s</span>
       </div>
-      <div class="strip" onPointerDown={(e) => {
+      <div class="strip" data-help="Tira de la secuencia" data-help-docs="clips" data-help-text="Cada bloque es un plano con su duración relativa. Tocá o arrastrá para hacer scrub. En amarillo, el clip actual." onPointerDown={(e) => {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         seqPlaying.value = false;
         scrub(e);
@@ -155,7 +155,8 @@ export function SequenceView() {
   const di = dragInfo.value;
 
   const indexAt = (x: number, y: number) => {
-    const cards = [...grid.current!.querySelectorAll<HTMLElement>('.ccard')];
+    if (!grid.current) return p.clipOrder.length;
+    const cards = [...grid.current.querySelectorAll<HTMLElement>('.ccard')];
     let best = cards.length;
     for (let i = 0; i < cards.length; i++) {
       const r = cards[i].getBoundingClientRect();
@@ -221,14 +222,14 @@ export function SequenceView() {
   return (
     <div class="sequence">
       <Player />
-      <div class="seq-tools">
+      <div class="seq-tools" data-help="Herramientas del storyboard" data-help-docs="copiar" data-help-text="+ Clip crea un plano nuevo. Pegar clip inserta el clip copiado después del actual.">
         <b>Storyboard</b>
         <span class="hint">Tocá un plano para abrirlo · arrastralo para reordenar (en táctil: mantené presionado)</span>
         <span class="grow" />
         <button onClick={() => { addClip(); view.value = 'sequence'; }}>+ Clip</button>
         <button onClick={() => void paste('clip')} title="Pegar clip copiado después del actual">Pegar clip</button>
       </div>
-      <div class="cgrid" ref={grid}>
+      <div class="cgrid" ref={grid} data-help="Storyboard" data-help-docs="clips" data-help-text="Planos numerados con miniatura (primer frame del recorte) y duración. Tocar abre el plano; arrastrar reordena (táctil: mantener presionado). ◀ ▶ mueven, Dup duplica, Copiar, ✕ borra. Tocar el nombre lo renombra.">
         {segs.map((s, i) => {
           const c = s.clip;
           const len = clipLength(c);

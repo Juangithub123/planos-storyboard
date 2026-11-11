@@ -19,7 +19,7 @@ export type Tool = 'pencil' | 'eraser';
 export const tool = signal<Tool>('pencil');
 export const pencil = signal({ size: 6, opacity: 1, color: '#1b1b1f', pressureSize: true, pressureOpacity: false });
 export const eraser = signal({ size: 30, opacity: 1, pressureSize: true });
-export const onion = signal({ enabled: false, before: 1, after: 1, opacity: 0.35, colorBefore: '#e0483e', colorAfter: '#2f9e5b' });
+export const onion = signal({ enabled: false, before: 1, after: 1, opacity: 0.35, allLayers: false, colorBefore: '#e0483e', colorAfter: '#2f9e5b' });
 /** Al dibujar en medio de una instancia sostenida: crear instancia nueva en el cabezal. */
 export const autoInstance = signal(false);
 /** Para probar en PC/sin stylus: permitir dibujar con el dedo. */
