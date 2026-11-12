@@ -12,7 +12,8 @@ export interface Instance {
 }
 
 export interface Layer {
-  kind: 'paint';
+  /** paint = dibujo; video = video de referencia (una sola instancia, no editable) */
+  kind: 'paint' | 'video';
   id: Id;
   name: string;
   visible: boolean;
@@ -24,6 +25,28 @@ export interface Layer {
   pre: Behavior;
   post: Behavior;
   instances: Instance[];
+  /** grupo/carpeta al que pertenece (las capas de un grupo son contiguas) */
+  groupId?: Id | null;
+  /** capas de video: asset en IndexedDB */
+  assetId?: Id;
+  /** capas de video: frames del video que se saltean al inicio (al cortar un clip) */
+  srcIn?: number;
+}
+
+export interface Group {
+  id: Id;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  collapsed: boolean;
+}
+
+export interface Asset {
+  name: string;
+  mime: string;
+  /** duración en segundos (video) */
+  duration?: number;
 }
 
 export interface Clip {
@@ -31,6 +54,7 @@ export interface Clip {
   name: string;
   /** capas de arriba (índice 0) hacia abajo */
   layers: Layer[];
+  groups?: Group[];
   playIn: number | null;
   playOut: number | null;
   trimIn: number | null;
@@ -46,6 +70,8 @@ export interface Project {
   clipOrder: Id[];
   clips: Record<Id, Clip>;
   palette: string[];
+  /** archivos importados (videos de referencia) */
+  assets?: Record<Id, Asset>;
   createdAt: number;
   updatedAt: number;
   lastBackupAt: number;

@@ -5,7 +5,8 @@ import {
   addEach, fitTotal, insertInstancesAt, instanceIndexAt, instanceStart, multiply, selectionSpan, setEach,
   splitLayerAt, type Selection,
 } from './timing';
-import { clipLength } from './evaluate';
+import { clipLength, isLocked } from './evaluate';
+import { inheritGroup, normalizeGroups } from './groups';
 import { uid, type Clip, type Instance, type Layer } from './types';
 import { createDrawing, loadDrawing } from '../render/drawings';
 import { openClip, targetIndex } from './actions';
@@ -16,7 +17,7 @@ import { openClip, targetIndex } from './actions';
 export function cleanSelection(c: Clip, sel: Selection): Selection {
   const out: Selection = {};
   for (const L of c.layers) {
-    if (L.locked) continue;
+    if (isLocked(c, L)) continue;
     const idxs = (sel[L.id] ?? []).filter((i) => i >= 0 && i < L.instances.length);
     if (idxs.length) out[L.id] = [...new Set(idxs)].sort((a, b) => a - b);
   }
@@ -27,7 +28,7 @@ export function selectAllClip(): Selection {
   const c = clip.peek();
   if (!c) return {};
   const s: Selection = {};
-  for (const L of c.layers) if (!L.locked && L.instances.length) s[L.id] = L.instances.map((_, k) => k);
+  for (const L of c.layers) if (!isLocked(c, L) && L.instances.length) s[L.id] = L.instances.map((_, k) => k);
   return s;
 }
 
@@ -75,13 +76,17 @@ async function dupInstances(items: Instance[]): Promise<Instance[]> {
 }
 
 async function dupLayer(L: Layer, name = L.name): Promise<Layer> {
-  return { ...L, id: uid(), name, instances: await dupInstances(L.instances) };
+  // los videos comparten el asset; los dibujos se duplican
+  return { ...L, id: uid(), name, groupId: null, instances: L.kind === 'video' ? L.instances.map((i) => ({ ...i, id: uid() })) : await dupInstances(L.instances) };
 }
 
 async function dupClip(c: Clip, name: string): Promise<Clip> {
+  // grupos nuevos con los mismos datos
+  const gmap = new Map((c.groups ?? []).map((g) => [g.id, uid()]));
   const layers: Layer[] = [];
-  for (const L of c.layers) layers.push(await dupLayer(L));
-  return { ...c, id: uid(), name, layers };
+  for (const L of c.layers) layers.push({ ...(await dupLayer(L)), groupId: L.groupId ? gmap.get(L.groupId) ?? null : null });
+  const groups = (c.groups ?? []).map((g) => ({ ...g, id: gmap.get(g.id)! }));
+  return { ...c, id: uid(), name, layers, groups };
 }
 
 // --- portapapeles (en memoria, dentro del mismo proyecto)
@@ -155,10 +160,10 @@ export async function paste(only?: Clipboard['kind']) {
     commit(withLayers(project.peek()!, c.id, layers), 'pegar instancias');
     selection.value = sel;
   } else if (cb.kind === 'layer') {
-    const nl = await dupLayer(cb.layer, cb.layer.name + ' copia');
     const p = project.peek()!;
     const cur = p.clips[clipId.peek()];
     const at = Math.max(0, cur.layers.findIndex((l) => l.id === layerId.peek()));
+    const nl = inheritGroup(cur, at, await dupLayer(cb.layer, cb.layer.name + ' copia'));
     commit(withClip(p, cur.id, (cc) => ({ ...cc, layers: [...cc.layers.slice(0, at), nl, ...cc.layers.slice(at)] })), 'pegar capa');
     layerId.value = nl.id;
   } else {
@@ -204,13 +209,14 @@ export async function splitClipAtPlayhead() {
       createDrawing(nid, loaded.get(id));
       return nid;
     }, uid);
+    if (L.kind === 'video') r.right.srcIn = (L.srcIn ?? 0) + Math.max(0, f - L.start);
     left.push(r.left);
     right.push(r.right);
   }
   const p = project.peek()!;
   const marks = { playIn: null, playOut: null, trimIn: null, trimOut: null };
-  const a: Clip = { ...c, ...marks, layers: left };
-  const b: Clip = { ...c, ...marks, id: uid(), name: c.name + ' B', layers: right };
+  const a: Clip = normalizeGroups({ ...c, ...marks, layers: left });
+  const b: Clip = normalizeGroups({ ...c, ...marks, id: uid(), name: c.name + ' B', layers: right });
   const at = p.clipOrder.indexOf(c.id) + 1;
   const order = [...p.clipOrder.slice(0, at), b.id, ...p.clipOrder.slice(at)];
   commit({ ...p, clipOrder: order, clips: { ...p.clips, [c.id]: a, [b.id]: b } }, 'cortar clip');

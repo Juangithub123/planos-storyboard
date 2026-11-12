@@ -23,9 +23,12 @@ const ITEMS: Item[] = [
   { label: 'Capa ↓', icon: '▼', run: () => selectLayerRel(1), keepOpen: true },
   { label: 'Deshacer', icon: '↶', run: () => void undo(), keepOpen: true },
   { label: 'Goma', icon: '⌫', on: () => tool.value === 'eraser', run: () => (tool.value = 'eraser') },
+  { label: 'Relleno', icon: '◧', on: () => tool.value === 'fill', run: () => (tool.value = 'fill') },
+  { label: 'Formas', icon: '◯', on: () => tool.value === 'shape', run: () => (tool.value = 'shape') },
+  { label: 'Lazo', icon: '⬚', on: () => tool.value === 'lasso', run: () => (tool.value = 'lasso') },
 ];
 
-const R = 88;
+const R = 112;
 
 export function PieMenu() {
   const pos = pie.value;

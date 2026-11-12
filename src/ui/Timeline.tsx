@@ -2,29 +2,43 @@ import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import {
   autoInstance, clip, clipId, commit, durationPanelOpen, frame, layerId, multiMode, onion, playing, preview,
-  project, scaleMode, selection, withLayer, withLayers,
+  project, scaleMode, selection, withClip, withLayer, withLayers,
 } from '../model/store';
-import { clipLength, playRange, trimRange } from '../model/evaluate';
+import { clipLength, isLocked, playRange, timelineRows, trimRange, type Row } from '../model/evaluate';
 import {
   addEach, instanceIndexAt, instanceStart, layerEnd, moveInstance, scaleSelection, selectionSpan, setDuration,
   type Selection,
 } from '../model/timing';
-import type { Behavior, Layer, Project } from '../model/types';
+import type { Behavior, Clip, Group, Layer, Project } from '../model/types';
 import {
-  addLayer, clearPlayMarks, clearTrim, deleteInstance, deleteLayer, duplicateInstance, gotoEnd, gotoStart,
-  insertEmptyAfter, markPlay, markTrim, moveLayer, newInstanceHere, nudgeDuration, renameLayer, setBehavior,
-  setFrame, stepFrame, stepInstance, togglePlay, toggleHold,
+  addLayer, clearPlayMarks, clearTrim, deleteInstance, deleteLayer, dissolveGroupAction, duplicateInstance,
+  editGroup, gotoEnd, gotoStart, groupCurrentLayer, insertEmptyAfter, markPlay, markTrim, moveLayer, newInstanceHere,
+  nudgeDuration, renameLayer, setBehavior, setFrame, stepFrame, stepInstance, togglePlay, toggleHold,
+  ungroupCurrentLayer,
 } from '../model/actions';
 import { cleanSelection, copyInstances, copyLayer, paste, selectAllClip, selectionInfo } from '../model/clipboard';
+import { importImageLayer, importVideoLayer } from '../model/references';
 import { drawingsVersion, peekThumb } from '../render/drawings';
 
-/** ancho de un frame en px */
-const fw = signal(18);
-const ROW_H = 46;
+// ---------------------------------------------------------------------------
+// Zoom de la timeline (horizontal = ancho de frame, vertical = alto de fila)
+
+const FW_DEFAULT = 18;
+const RH_DEFAULT = 46;
+const FW_MIN = 3;
+const FW_MAX = 90;
+const RH_MIN = 22;
+const RH_MAX = 140;
+const fw = signal(FW_DEFAULT);
+const rh = signal(RH_DEFAULT);
+const clampFw = (v: number) => Math.max(FW_MIN, Math.min(FW_MAX, v));
+const clampRh = (v: number) => Math.max(RH_MIN, Math.min(RH_MAX, Math.round(v)));
+const groupH = () => Math.max(22, Math.round(rh.value * 0.6));
+
 const HEAD_W = 176;
+const RULER_H = 28;
 const px = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v + 'px']));
-/** marcador de destino al reordenar: {layerId, frame} */
-const dropMark = signal<{ row: number; x: number } | null>(null);
+const dropMark = signal<{ top: number; h: number; x: number } | null>(null);
 const rectMark = signal<{ x0: number; x1: number; r0: number; r1: number } | null>(null);
 
 const BEH: { v: Behavior; label: string }[] = [
@@ -50,12 +64,32 @@ function Thumb({ id }: { id: string }) {
   return <canvas ref={ref} class="thumb" />;
 }
 
-function LayerHeader({ L, active }: { L: Layer; active: boolean }) {
+function GroupHeader({ g, c }: { g: Group; c: Clip }) {
+  const firstLayer = c.layers.find((l) => l.groupId === g.id);
+  return (
+    <div class="ghead" style={px({ height: groupH() })} onPointerDown={() => firstLayer && (layerId.value = firstLayer.id)}>
+      <button class="ib" title={g.collapsed ? 'Desplegar' : 'Plegar'}
+        onClick={() => editGroup('plegar grupo', g.id, (x) => ({ ...x, collapsed: !x.collapsed }))}>{g.collapsed ? '▸' : '▾'}</button>
+      <button class={'ib' + (g.visible ? '' : ' off')} title="Visible"
+        onClick={() => editGroup('visibilidad grupo', g.id, (x) => ({ ...x, visible: !x.visible }))}>{g.visible ? '◉' : '○'}</button>
+      <button class={'ib' + (g.locked ? ' on' : '')} title="Bloquear grupo"
+        onClick={() => editGroup('bloqueo grupo', g.id, (x) => ({ ...x, locked: !x.locked }))}>{g.locked ? '🔒︎' : '🔓︎'}</button>
+      <span class="gname" onDblClick={() => {
+        const n = prompt('Nombre del grupo', g.name);
+        if (n) editGroup('renombrar grupo', g.id, (x) => ({ ...x, name: n }));
+      }}>📁︎ {g.name}</span>
+      <button class="ib" title="Desagrupar (las capas quedan sueltas)" onClick={() => dissolveGroupAction(g.id)}>✕</button>
+    </div>
+  );
+}
+
+function LayerHeader({ L, active, h }: { L: Layer; active: boolean; h: number }) {
   const p = project.value!;
   const toggle = (key: 'visible' | 'locked') =>
     commit(withLayer(p, clipId.value, L.id, (l) => ({ ...l, [key]: !l[key] })), key);
   return (
-    <div class={'lhead' + (active ? ' active' : '')} style={px({ height: ROW_H })} onPointerDown={() => (layerId.value = L.id)}>
+    <div class={'lhead' + (active ? ' active' : '') + (L.groupId ? ' ingroup' : '')} style={px({ height: h })}
+      onPointerDown={() => (layerId.value = L.id)}>
       <button class={'ib' + (L.visible ? '' : ' off')} title="Visible" onClick={() => toggle('visible')}>
         {L.visible ? '◉' : '○'}
       </button>
@@ -66,52 +100,65 @@ function LayerHeader({ L, active }: { L: Layer; active: boolean }) {
         const n = prompt('Nombre de la capa', L.name);
         if (n) renameLayer(L.id, n);
       }}>
-        <span>{L.name}</span>
-        <span class="beh">
-          <select value={L.pre} title="Antes" onChange={(e) => setBehavior('pre', (e.target as HTMLSelectElement).value as Behavior, L.id)}>
-            {BEH.map((b) => <option value={b.v}>{b.label}</option>)}
-          </select>
-          <select value={L.post} title="Después" onChange={(e) => setBehavior('post', (e.target as HTMLSelectElement).value as Behavior, L.id)}>
-            {BEH.map((b) => <option value={b.v}>{b.label}</option>)}
-          </select>
-        </span>
+        <span>{L.kind === 'video' ? '🎬︎ ' : ''}{L.name}</span>
+        {L.kind === 'paint' && h >= 36 && (
+          <span class="beh">
+            <select value={L.pre} title="Antes" onChange={(e) => setBehavior('pre', (e.target as HTMLSelectElement).value as Behavior, L.id)}>
+              {BEH.map((b) => <option value={b.v}>{b.label}</option>)}
+            </select>
+            <select value={L.post} title="Después" onChange={(e) => setBehavior('post', (e.target as HTMLSelectElement).value as Behavior, L.id)}>
+              {BEH.map((b) => <option value={b.v}>{b.label}</option>)}
+            </select>
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-function LayerTrack({ L, len, active, sel }: { L: Layer; len: number; active: boolean; sel: number[] }) {
+function LayerTrack({ L, len, active, sel, locked, h }: { L: Layer; len: number; active: boolean; sel: number[]; locked: boolean; h: number }) {
   const w = fw.value;
   const blocks = [];
   let t = L.start;
   const total = layerEnd(L) - L.start;
-  if (total > 0 && L.pre !== 'none' && L.start > 0) {
-    blocks.push(<div class={'ext ' + L.pre} style={px({ left: 0, width: L.start * w })} />);
-  }
-  L.instances.forEach((it, k) => {
-    const x = t * w;
-    const bw = it.duration * w;
-    t += it.duration;
-    const selected = sel.includes(k);
-    blocks.push(
-      <div class={'inst' + (it.drawingId ? '' : ' empty') + (selected ? ' sel' : '')} style={px({ left: x, width: bw })} data-k={k}>
-        {it.drawingId && bw >= 30 ? <Thumb id={it.drawingId} /> : null}
-        {bw >= 22 ? <span class="dur">{it.duration}</span> : null}
-        {!L.locked && <div class="handle" data-handle={k} />}
-      </div>,
-    );
-  });
-  if (total > 0 && L.post !== 'none' && t < len) {
-    blocks.push(<div class={'ext ' + L.post} style={px({ left: t * w, width: (len - t) * w })} />);
+  if (L.kind === 'video') {
+    const it = L.instances[0];
+    if (it) {
+      blocks.push(
+        <div class="inst video" style={px({ left: t * w, width: it.duration * w })}>
+          <span class="vlabel">🎬︎ {L.name}</span>
+        </div>,
+      );
+    }
+  } else {
+    if (total > 0 && L.pre !== 'none' && L.start > 0) {
+      blocks.push(<div class={'ext ' + L.pre} style={px({ left: 0, width: L.start * w })} />);
+    }
+    L.instances.forEach((it, k) => {
+      const x = t * w;
+      const bw = it.duration * w;
+      t += it.duration;
+      const selected = sel.includes(k);
+      blocks.push(
+        <div class={'inst' + (it.drawingId ? '' : ' empty') + (selected ? ' sel' : '')} style={px({ left: x, width: bw })} data-k={k}>
+          {it.drawingId && bw >= 30 ? <Thumb id={it.drawingId} /> : null}
+          {bw >= 22 ? <span class="dur">{it.duration}</span> : null}
+          {!locked && <div class="handle" data-handle={k} />}
+        </div>,
+      );
+    });
+    if (total > 0 && L.post !== 'none' && t < len) {
+      blocks.push(<div class={'ext ' + L.post} style={px({ left: t * w, width: (len - t) * w })} />);
+    }
   }
   return (
-    <div class={'ltrack' + (active ? ' active' : '') + (L.locked ? ' locked' : '')} data-layer={L.id} style={px({ height: ROW_H })}>
+    <div class={'ltrack' + (active ? ' active' : '') + (locked ? ' locked' : '')} data-layer={L.id} style={px({ height: h })}>
       {blocks}
     </div>
   );
 }
 
-/** Estado de un arrastre en las pistas. */
+/** Estado de un arrastre en las pistas (row = índice en las filas de la timeline). */
 type Drag =
   | { kind: 'stretch'; id: number; layerId: string; index: number; x0: number; dur0: number; before: Project; last: Project | null }
   | { kind: 'scale'; id: number; edge: 'l' | 'r'; x0: number; sel: Selection; before: Project; last: Project | null }
@@ -119,6 +166,17 @@ type Drag =
   | { kind: 'scrub'; id: number }
   | { kind: 'move'; id: number; row: number; k: number }
   | { kind: 'rect'; id: number; f0: number; r0: number; additive: boolean };
+
+/** Ajusta el zoom para que entre todo el clip (ancho) y todas las filas (alto). */
+function fitZoom(el: HTMLElement | null, c: Clip) {
+  if (!el) return;
+  const rows = timelineRows(c);
+  const layerRows = rows.filter((r) => r.type === 'layer').length || 1;
+  const groupRows = rows.length - layerRows;
+  fw.value = clampFw((el.clientWidth - HEAD_W - 24) / (clipLength(c) + 2));
+  const avail = el.clientHeight - RULER_H - 8 - groupRows * Math.max(22, Math.round(rh.peek() * 0.6));
+  rh.value = clampRh(avail / layerRows);
+}
 
 export function Timeline() {
   const c = clip.value;
@@ -153,6 +211,8 @@ export function Timeline() {
   if (!c || !p) return null;
   const len = clipLength(c);
   const w = fw.value;
+  const rowH = rh.value;
+  const gH = groupH();
   const cols = Math.max(len + 48, 120);
   const [pa, pb] = playRange(c);
   const [ta, tb] = trimRange(c);
@@ -161,12 +221,32 @@ export function Timeline() {
   const sel = cleanSelection(c, selection.value);
   const info = selectionInfo(selection.value);
 
+  // filas y sus posiciones verticales
+  const rows: Row[] = timelineRows(c);
+  const tops: number[] = [];
+  let acc = 0;
+  for (const r of rows) {
+    tops.push(acc);
+    acc += r.type === 'group' ? gH : rowH;
+  }
+  const totalH = acc;
+  const rowHeight = (i: number) => (rows[i]?.type === 'group' ? gH : rowH);
+  const layerOfRow = (i: number): Layer | null => {
+    const r = rows[i];
+    return r?.type === 'layer' ? r.layer : null;
+  };
+
   const localXY = (e: PointerEvent) => {
     const r = tracksRef.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   const frameAt = (e: PointerEvent) => Math.max(0, Math.floor(localXY(e).x / fw.peek()));
-  const rowAt = (e: PointerEvent) => Math.max(0, Math.min(c.layers.length - 1, Math.floor(localXY(e).y / ROW_H)));
+  const rowAt = (e: PointerEvent) => {
+    const y = localXY(e).y;
+    let i = 0;
+    while (i < rows.length - 1 && y >= tops[i + 1]) i++;
+    return i;
+  };
 
   // ---- regla (scrub)
   const onRulerDown = (e: PointerEvent) => {
@@ -193,11 +273,15 @@ export function Timeline() {
 
   const tapAt = (e: PointerEvent, additive: boolean) => {
     const fr = frameAt(e);
-    const row = rowAt(e);
-    const L = c.layers[row];
+    const L = layerOfRow(rowAt(e));
     playing.value = false;
     setFrame(fr);
+    if (!L) return;
     layerId.value = L.id;
+    if (L.kind === 'video') {
+      selection.value = {};
+      return;
+    }
     const k = instanceIndexAt(L, fr);
     if (additive) {
       if (k >= 0) toggleInSel(L.id, k);
@@ -229,18 +313,18 @@ export function Timeline() {
       return;
     }
     const row = rowAt(e);
-    const L = c.layers[row];
-    const k = instanceIndexAt(L, frameAt(e));
+    const L = layerOfRow(row);
+    const k = L && L.kind === 'paint' ? instanceIndexAt(L, frameAt(e)) : -1;
     const pen = e.pointerType !== 'touch';
     const additive = multiMode.peek() || e.shiftKey || e.ctrlKey;
     if (pen || multiMode.peek()) el.setPointerCapture(e.pointerId);
-    const isSelected = k >= 0 && !!sel[L.id]?.includes(k);
-    const movable = k >= 0 && !L.locked && !additive;
+    const isSelected = !!L && k >= 0 && !!sel[L.id]?.includes(k);
+    const movable = !!L && k >= 0 && !isLocked(c, L) && !additive;
     const d: Drag = { kind: 'pending', id: e.pointerId, x0: e.clientX, y0: e.clientY, pen, row, k, timer: 0, movable };
     if (movable && !pen) {
       // táctil: mantener presionado para mover la instancia
       d.timer = window.setTimeout(() => {
-        if (drag.current === d) {
+        if (drag.current === d && L) {
           el.setPointerCapture(e.pointerId);
           layerId.value = L.id;
           selection.value = { [L.id]: [k] };
@@ -255,6 +339,22 @@ export function Timeline() {
       tapAt(e, false);
       drag.current = { kind: 'scrub', id: e.pointerId };
     }
+  };
+
+  /** índice destino y posición x (en frames) para soltar la instancia k en el frame fr */
+  const dropFrame = (L: Layer, k: number, fr: number) => {
+    let t = L.start;
+    let to = 0;
+    let x = L.start;
+    for (let i = 0; i < L.instances.length; i++) {
+      const mid = t + L.instances[i].duration / 2;
+      if (i !== k && fr >= mid) {
+        to++;
+        x = t + L.instances[i].duration;
+      }
+      t += L.instances[i].duration;
+    }
+    return { to, x: to === 0 ? L.start : x };
   };
 
   const onTracksMove = (e: PointerEvent) => {
@@ -277,7 +377,6 @@ export function Timeline() {
         const nl = Math.max(1, d.edge === 'r' ? slen + dx : slen - dx);
         layers = scaleSelection(layers0, d.sel, d.edge === 'r' ? span.start : span.end, nl / slen);
       } else {
-        // delta: el borde sigue al dedo repartiendo entre las instancias de la fila más poblada
         const n = Math.max(...Object.entries(d.sel).map(([, idx]) => Math.max(...idx) - Math.min(...idx) + 1));
         const per = Math.round((d.edge === 'r' ? dx : -dx) / n);
         layers = addEach(layers0, d.sel, per);
@@ -294,7 +393,8 @@ export function Timeline() {
         drag.current = { kind: 'rect', id: d.id, f0, r0: d.row, additive: e.shiftKey || e.ctrlKey };
         onTracksMove(e);
       } else if (d.pen && d.movable) {
-        layerId.value = c.layers[d.row].id;
+        const L = layerOfRow(d.row);
+        if (L) layerId.value = L.id;
         drag.current = { kind: 'move', id: d.id, row: d.row, k: d.k };
         onTracksMove(e);
       } else {
@@ -303,29 +403,13 @@ export function Timeline() {
     } else if (d.kind === 'scrub') {
       setFrame(frameAt(e));
     } else if (d.kind === 'move') {
-      dropMark.value = { row: d.row, x: dropFrame(c.layers[d.row], d.k, frameAt(e)).x * fw.peek() };
+      const L = layerOfRow(d.row);
+      if (L) dropMark.value = { top: tops[d.row], h: rowHeight(d.row), x: dropFrame(L, d.k, frameAt(e)).x * fw.peek() };
     } else if (d.kind === 'rect') {
       const f1 = frameAt(e);
       const r1 = rowAt(e);
       rectMark.value = { x0: Math.min(d.f0, f1), x1: Math.max(d.f0, f1) + 1, r0: Math.min(d.r0, r1), r1: Math.max(d.r0, r1) };
     }
-  };
-
-  /** índice destino y posición x (en frames) para soltar la instancia k en el frame fr */
-  const dropFrame = (L: Layer, k: number, fr: number) => {
-    let t = L.start;
-    let to = 0;
-    let x = L.start;
-    for (let i = 0; i < L.instances.length; i++) {
-      const mid = t + L.instances[i].duration / 2;
-      if (i !== k && fr >= mid) {
-        to++;
-        x = t + L.instances[i].duration;
-      }
-      t += L.instances[i].duration;
-    }
-    // si arrastro hacia adelante, el corrimiento por quitar k ya está contemplado en `to`
-    return { to, x: to === 0 ? L.start : x };
   };
 
   const onTracksUp = (e: PointerEvent) => {
@@ -343,7 +427,8 @@ export function Timeline() {
       if (e.type !== 'pointercancel') tapAt(e, multiMode.peek() || e.shiftKey || e.ctrlKey);
     } else if (d.kind === 'move') {
       dropMark.value = null;
-      const L = c.layers[d.row];
+      const L = layerOfRow(d.row);
+      if (!L) return;
       const { to } = dropFrame(L, d.k, frameAt(e));
       if (to !== d.k && e.type !== 'pointercancel') {
         const nl = moveInstance(L, d.k, to);
@@ -357,8 +442,8 @@ export function Timeline() {
       if (!m) return;
       const next: Selection = d.additive ? { ...selection.peek() } : {};
       for (let r = m.r0; r <= m.r1; r++) {
-        const L = c.layers[r];
-        if (!L || L.locked) continue;
+        const L = layerOfRow(r);
+        if (!L || L.kind !== 'paint' || isLocked(c, L)) continue;
         let t = L.start;
         const idxs = new Set(next[L.id] ?? []);
         L.instances.forEach((it, k) => {
@@ -371,31 +456,35 @@ export function Timeline() {
     }
   };
 
-  // zoom de la timeline con ctrl+rueda
+  // Ctrl+rueda = zoom horizontal; Alt+rueda (o Ctrl+Shift) = zoom vertical
   const onWheel = (e: WheelEvent) => {
-    if (!e.ctrlKey) return;
+    if (!e.ctrlKey && !e.altKey) return;
     e.preventDefault();
-    fw.value = Math.max(4, Math.min(80, fw.peek() * Math.exp(-e.deltaY * 0.002)));
+    const k = Math.exp(-(e.deltaY || e.deltaX) * 0.002);
+    if (e.altKey || e.shiftKey) rh.value = clampRh(rh.peek() * k);
+    else fw.value = clampFw(fw.peek() * k);
   };
 
   // caja de la selección (para escalar) cuando hay más de una instancia
   let selBox = null;
   const span = selectionSpan(c.layers, sel);
   if (span && (info.count > 1 || multiMode.value)) {
-    const rows = c.layers.map((l, i) => (sel[l.id] ? i : -1)).filter((i) => i >= 0);
-    const r0 = Math.min(...rows);
-    const r1 = Math.max(...rows);
-    selBox = (
-      <div class="selbox" style={px({ left: span.start * w, width: (span.end - span.start) * w, top: r0 * ROW_H + 1, height: (r1 - r0 + 1) * ROW_H - 2 })}>
-        <div class="selhandle l" data-selhandle="l" title="Escalar desde el inicio" />
-        <div class="selhandle r" data-selhandle="r" title="Escalar desde el final" />
-      </div>
-    );
+    const selRows = rows.map((r, i) => (r.type === 'layer' && sel[r.layer.id] ? i : -1)).filter((i) => i >= 0);
+    if (selRows.length) {
+      const r0 = Math.min(...selRows);
+      const r1 = Math.max(...selRows);
+      selBox = (
+        <div class="selbox" style={px({ left: span.start * w, width: (span.end - span.start) * w, top: tops[r0] + 1, height: tops[r1] + rowHeight(r1) - tops[r0] - 2 })}>
+          <div class="selhandle l" data-selhandle="l" title="Escalar desde el inicio" />
+          <div class="selhandle r" data-selhandle="r" title="Escalar desde el final" />
+        </div>
+      );
+    }
   }
 
   const L = c.layers.find((l) => l.id === layerId.value);
   const ruler = [];
-  const step = w >= 14 ? 1 : w >= 7 ? 2 : 5;
+  const step = w >= 14 ? 1 : w >= 7 ? 2 : w >= 4 ? 5 : 10;
   for (let i = 0; i < cols; i++) {
     const major = i === 0 || (i + 1) % (step * 5) === 0;
     if (i % step === 0 || major) {
@@ -422,6 +511,17 @@ export function Timeline() {
           <button onClick={() => stepInstance(1)} title="Instancia siguiente">⇥</button>
           <button onClick={gotoEnd} title="Final">⏭</button>
           <span class="counter">{f + 1}<small> / {len}</small></span>
+        </div>
+        <div class="grp" data-help="Zoom de la timeline" data-help-docs="timeline"
+          data-help-text="↔ − / + cambian el ancho de los frames (zoom horizontal). ↕ − / + cambian el alto de las filas (zoom vertical). ⟲ vuelve al tamaño normal. ⊡ ajusta para que entre todo el clip y todas las capas. En PC: Ctrl+rueda (horizontal) y Alt+rueda (vertical).">
+          <span class="zl">↔</span>
+          <button onClick={() => (fw.value = clampFw(fw.value / 1.3))} title="Alejar horizontal">−</button>
+          <button onClick={() => (fw.value = clampFw(fw.value * 1.3))} title="Acercar horizontal">+</button>
+          <span class="zl">↕</span>
+          <button onClick={() => (rh.value = clampRh(rh.value / 1.25))} title="Filas más bajas">−</button>
+          <button onClick={() => (rh.value = clampRh(rh.value * 1.25))} title="Filas más altas">+</button>
+          <button onClick={() => { fw.value = FW_DEFAULT; rh.value = RH_DEFAULT; }} title="Zoom normal (reset)">⟲</button>
+          <button onClick={() => fitZoom(scroller.current, c)} title="Ajustar: todo el clip y todas las capas a la vista (fit)">⊡</button>
         </div>
         <div class="grp" data-help="Selección y escalado" data-help-docs="seleccion"
           data-help-text="Multi: los toques suman/quitan y arrastrar hace un rectángulo. Todo: selecciona el clip. Prop/Delta: cómo escalan las manijas azules de la selección. Duración…: panel numérico.">
@@ -463,15 +563,17 @@ export function Timeline() {
           <button class={onion.value.enabled ? 'on' : ''} onClick={() => (onion.value = { ...onion.value, enabled: !onion.value.enabled })}
             title="Papel cebolla">Cebolla</button>
         </div>
-        <div class="grp" data-help="Capas y zoom" data-help-docs="capas"
-          data-help-text="+ Capa, subir/bajar la capa actual, Copiar capa (luego Pegar), − Capa. Los − / + del final cambian el zoom de la timeline.">
-          <button onClick={addLayer} title="Nueva capa">+ Capa</button>
+        <div class="grp" data-help="Capas" data-help-docs="capas"
+          data-help-text="+ Capa, subir/bajar (al llegar a un grupo, la capa entra o sale de él), Agrupar (crea un grupo con la capa actual), Sacar (saca la capa de su grupo), Copiar capa, − Capa, y + Imagen / + Video para capas de referencia.">
+          <button onClick={() => addLayer()} title="Nueva capa">+ Capa</button>
           <button onClick={() => moveLayer(-1)} title="Subir capa">↑</button>
           <button onClick={() => moveLayer(1)} title="Bajar capa">↓</button>
+          <button onClick={groupCurrentLayer} title="Crear un grupo con la capa actual">Agrupar</button>
+          <button onClick={ungroupCurrentLayer} disabled={!L?.groupId} title="Sacar la capa de su grupo">Sacar</button>
           <button onClick={copyLayer} title="Copiar capa (después: Pegar)">Copiar capa</button>
           <button onClick={deleteLayer} title="Borrar capa">− Capa</button>
-          <button onClick={() => (fw.value = Math.max(4, fw.value / 1.25))} title="Alejar timeline">−</button>
-          <button onClick={() => (fw.value = Math.min(80, fw.value * 1.25))} title="Acercar timeline">+</button>
+          <button onClick={() => pickFile('image/*', importImageLayer)} title="Importar una imagen como capa de referencia">+ Imagen</button>
+          <button onClick={() => pickFile('video/*', importVideoLayer)} title="Importar un video como capa de referencia">+ Video</button>
         </div>
       </div>
 
@@ -492,22 +594,29 @@ export function Timeline() {
           </div>
           <div class="tl-rows">
             <div class="heads" data-help="Encabezados de capa" data-help-docs="capas"
-              data-help-text="◉ visibilidad, 🔓 bloqueo, nombre (doble toque para renombrar) y comportamiento antes/después de las instancias: Cut, Hold o Loop. Tocá una capa para que sea la actual." style={px({ width: HEAD_W })}>
-              {c.layers.map((l) => <LayerHeader key={l.id} L={l} active={l.id === layerId.value} />)}
+              data-help-text="◉ visibilidad, 🔓 bloqueo, nombre (doble toque para renombrar) y comportamiento antes/después: Cut, Hold o Loop. Los grupos (📁) se pliegan con ▸/▾ y ✕ los desarma. Tocá una capa para que sea la actual." style={px({ width: HEAD_W })}>
+              {rows.map((r) => r.type === 'group'
+                ? <GroupHeader key={'g' + r.group.id} g={r.group} c={c} />
+                : <LayerHeader key={r.layer.id} L={r.layer} active={r.layer.id === layerId.value} h={rowH} />)}
             </div>
             <div data-help="Instancias en la timeline" data-help-docs="timeline"
               data-help-text="Cada bloque es una instancia y el número es su duración. Manija gris derecha: estirar/acortar (ripple). Arrastrar una instancia seleccionada: reordenar (táctil: mantener presionado). Con varias seleccionadas aparecen manijas azules para escalar."
-              class={'tracks' + (multiMode.value ? ' multi' : '')} ref={tracksRef} style={px({ width: cols * w })}
+              class={'tracks' + (multiMode.value ? ' multi' : '')} ref={tracksRef} style={px({ width: cols * w, height: totalH })}
               onPointerDown={onTracksDown} onPointerMove={onTracksMove} onPointerUp={onTracksUp} onPointerCancel={onTracksUp}>
-              {c.layers.map((l) => (
-                <LayerTrack key={l.id} L={l} len={len} active={l.id === layerId.value} sel={sel[l.id] ?? []} />
-              ))}
+              {rows.map((r) => r.type === 'group'
+                ? <div key={'g' + r.group.id} class="gtrack" style={px({ height: gH })} />
+                : <LayerTrack key={r.layer.id} L={r.layer} len={len} active={r.layer.id === layerId.value}
+                    sel={sel[r.layer.id] ?? []} locked={isLocked(c, r.layer)} h={rowH} />)}
               {hasTrim && <div class="trim-shade" style={px({ left: 0, width: ta * w })} />}
               {hasTrim && <div class="trim-shade" style={px({ left: (tb + 1) * w, width: (cols - tb - 1) * w })} />}
               <div class="clip-end" style={px({ left: len * w })} />
               {selBox}
-              {dm && <div class="dropmark" style={px({ left: dm.x - 2, top: dm.row * ROW_H, height: ROW_H })} />}
-              {rm && <div class="rectmark" style={px({ left: rm.x0 * w, width: (rm.x1 - rm.x0) * w, top: rm.r0 * ROW_H, height: (rm.r1 - rm.r0 + 1) * ROW_H })} />}
+              {dm && <div class="dropmark" style={px({ left: dm.x - 2, top: dm.top, height: dm.h })} />}
+              {rm && (
+                <div class="rectmark" style={px({
+                  left: rm.x0 * w, width: (rm.x1 - rm.x0) * w, top: tops[rm.r0], height: tops[rm.r1] + rowHeight(rm.r1) - tops[rm.r0],
+                })} />
+              )}
               <div class="playhead" style={px({ left: f * w + w / 2 })} />
             </div>
           </div>
@@ -516,3 +625,17 @@ export function Timeline() {
     </div>
   );
 }
+
+/** Abre el selector de archivos del sistema. */
+function pickFile(accept: string, then: (f: File) => void | Promise<void>) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (f) void then(f);
+  };
+  input.click();
+}
+
+export { withClip };

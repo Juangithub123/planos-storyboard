@@ -49,7 +49,7 @@ function drawClipFrame(canvas: HTMLCanvasElement, p: Project, c: Clip, f: number
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(k, 0, 0, k, 0, 0);
-  renderClipFrame(ctx, c, f, p.width, p.height);
+  renderClipFrame(ctx, c, f, p.width, p.height, null, null, p);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 

@@ -1,14 +1,11 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { effect } from '@preact/signals';
 import {
-  autoInstance, clip, clipId, commitStroke, eraser, fingerDraws, frame, layer, layerId, onion,
-  pencil, pieHoldMs, playing, project, redo, say, tool, undo, withLayer,
+  clip, clipId, fingerDraws, frame, historyHooks, layerId, onion, pieHoldMs, playing, project, redo, tool, undo,
 } from '../model/store';
-import { instanceIndexAt, instanceStart, splitAt } from '../model/timing';
-import { uid, type Project } from '../model/types';
-import { createDrawing, drawingsVersion, markDirty, peekDrawing } from '../render/drawings';
-import { renderClipFrame, type ActiveStroke } from '../render/compositor';
-import { StrokeBuffer } from '../tools/brush';
+import { drawingsVersion } from '../render/drawings';
+import { renderClipFrame } from '../render/compositor';
+import { applyFloating, cancelFloating, createToolController, flipFloating, floating, type Pt } from '../tools/controller';
 import { pie } from './PieMenu';
 
 interface View {
@@ -31,14 +28,16 @@ export function CanvasView() {
     const ctx = canvas.getContext('2d')!;
     let dpr = window.devicePixelRatio || 1;
     let view: View = { x: 0, y: 0, zoom: 1, rot: 0 };
-    let active: ActiveStroke | null = null;
-    let stroke: StrokeBuffer | null = null;
-    let strokeCommit: { drawingId: string; next: Project | null; before: Project } | null = null;
     let penId: number | null = null;
     let penSeenAt = 0;
     let raf = 0;
 
     const matrix = () => new DOMMatrix().translate(view.x, view.y).rotate((view.rot * 180) / Math.PI).scale(view.zoom);
+    const toScreen = (pt: Pt) => {
+      const q = matrix().transformPoint(new DOMPoint(pt.x, pt.y));
+      return { x: q.x, y: q.y };
+    };
+    const tools = createToolController({ requestRender: () => requestRender(), toScreen });
 
     const render = () => {
       raf = 0;
@@ -54,8 +53,8 @@ export function CanvasView() {
       ctx.fillRect(0, 0, p.width, p.height);
       const o = onion.peek();
       renderClipFrame(
-        ctx, c, frame.peek(), p.width, p.height, active,
-        o.enabled && !playing.peek() ? { ...o, layerId: o.allLayers ? null : layerId.peek() } : null,
+        ctx, c, frame.peek(), p.width, p.height, tools.override(),
+        o.enabled && !playing.peek() ? { ...o, layerId: o.allLayers ? null : layerId.peek() } : null, p,
       );
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.strokeStyle = 'rgba(0,0,0,.6)';
@@ -67,6 +66,7 @@ export function CanvasView() {
       corners.forEach((pt, i) => (i ? ctx.lineTo(pt.x * dpr, pt.y * dpr) : ctx.moveTo(pt.x * dpr, pt.y * dpr)));
       ctx.closePath();
       ctx.stroke();
+      tools.overlay(ctx, dpr);
     };
     const requestRender = () => {
       if (!raf) raf = requestAnimationFrame(render);
@@ -100,9 +100,20 @@ export function CanvasView() {
 
     const dispose = effect(() => {
       // dependencias de render
-      project.value; clipId.value; frame.value; onion.value; drawingsVersion.value; layerId.value; playing.value;
+      project.value; clipId.value; frame.value; onion.value; drawingsVersion.value; layerId.value; playing.value; floating.value;
       requestRender();
     });
+    // la selección flotante se confirma al cambiar de frame, capa, clip o herramienta
+    let lastCtx = '';
+    const disposeFloat = effect(() => {
+      const key = [frame.value, layerId.value, clipId.value, tool.value === 'lasso'].join('|');
+      if (lastCtx && key !== lastCtx && floating.peek()) applyFloating();
+      lastCtx = key;
+    });
+    historyHooks.before = () => {
+      tools.cancel();
+      cancelFloating();
+    };
     let lastPid = '';
     const disposeFit = effect(() => {
       const p = project.value;
@@ -112,88 +123,13 @@ export function CanvasView() {
       }
     });
 
-    const toProject = (e: PointerEvent) => {
+    const toProject = (e: PointerEvent): Pt => {
       const r = canvas.getBoundingClientRect();
       const pt = matrix().inverse().transformPoint(new DOMPoint(e.clientX - r.left, e.clientY - r.top));
       return { x: pt.x, y: pt.y };
     };
-
-    // ---------------- dibujo
-    const beginStroke = (e: PointerEvent) => {
-      const p = project.peek();
-      const c = clip.peek();
-      const L = layer.peek();
-      if (!p || !c || !L) return false;
-      if (playing.peek()) playing.value = false;
-      if (L.locked) return say('La capa está bloqueada'), false;
-      if (!L.visible) return say('La capa está oculta'), false;
-      const isEraser = tool.peek() === 'eraser';
-      const f = frame.peek();
-      const idx = instanceIndexAt(L, f);
-      const inst = idx >= 0 ? L.instances[idx] : null;
-      const atStart = idx >= 0 && instanceStart(L, idx) === f;
-      let drawingId: string;
-      let canvasTarget: HTMLCanvasElement;
-      let next: Project | null = null;
-
-      if (inst?.drawingId && (atStart || !autoInstance.peek())) {
-        drawingId = inst.drawingId;
-        const existing = peekDrawing(drawingId);
-        if (!existing) return say('Cargando dibujo…'), false;
-        canvasTarget = existing;
-      } else {
-        if (isEraser) return false;
-        drawingId = uid();
-        canvasTarget = createDrawing(drawingId);
-        if (inst && !inst.drawingId && (atStart || !autoInstance.peek())) {
-          next = withLayer(p, c.id, L.id, (l) => ({
-            ...l, instances: l.instances.map((it, k) => (k === idx ? { ...it, drawingId } : it)),
-          }));
-        } else {
-          const r = splitAt(L, f, drawingId, uid);
-          next = withLayer(p, c.id, L.id, () => r.layer);
-        }
-      }
-      const brush = isEraser ? { ...eraser.peek(), color: '#000' } : pencil.peek();
-      stroke = new StrokeBuffer(p.width, p.height, brush);
-      active = { layerId: L.id, canvas: canvasTarget, buffer: stroke.canvas, eraser: isEraser, alpha: brush.opacity };
-      strokeCommit = { drawingId, next, before: p };
-      addPoints(e);
-      return true;
-    };
-
-    const addPoints = (e: PointerEvent) => {
-      if (!stroke) return;
-      const evs = e.getCoalescedEvents?.() ?? [];
-      for (const ev of evs.length ? evs : [e]) {
-        const pt = toProject(ev);
-        const pr = ev.pointerType === 'mouse' ? 0.6 : ev.pressure || 0.5;
-        stroke.add({ x: pt.x, y: pt.y, p: Math.max(0.05, pr) });
-      }
-      requestRender();
-    };
-
-    const endStroke = (cancel = false) => {
-      const p = project.peek();
-      if (!stroke || !active || !strokeCommit || !p) return;
-      const b = stroke.bounds(p.width, p.height);
-      if (!cancel && b) {
-        const tctx = active.canvas.getContext('2d', { willReadFrequently: true })!;
-        const before = tctx.getImageData(b.x, b.y, b.w, b.h);
-        tctx.globalAlpha = active.alpha;
-        tctx.globalCompositeOperation = active.eraser ? 'destination-out' : 'source-over';
-        tctx.drawImage(stroke.canvas, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);
-        tctx.globalAlpha = 1;
-        tctx.globalCompositeOperation = 'source-over';
-        const after = tctx.getImageData(b.x, b.y, b.w, b.h);
-        commitStroke({ drawingId: strokeCommit.drawingId, x: b.x, y: b.y, before, after }, strokeCommit.next, strokeCommit.before);
-        markDirty(strokeCommit.drawingId);
-      }
-      stroke = null;
-      active = null;
-      strokeCommit = null;
-      requestRender();
-    };
+    const beginStroke = (e: PointerEvent) => tools.down(e, toProject(e), local(e));
+    const endStroke = (cancel = false) => tools.up(cancel);
 
     // ---------------- gestos táctiles
     const touches = new Map<number, { x: number; y: number }>();
@@ -258,7 +194,7 @@ export function CanvasView() {
           if (hold !== h) return;
           hold = null;
           if (penId === h.id) {
-            endStroke(true);
+            tools.cancel();
             penId = null;
             try {
               canvas.releasePointerCapture(h.id);
@@ -314,7 +250,7 @@ export function CanvasView() {
     const onMove = (e: PointerEvent) => {
       if (hold && hold.id === e.pointerId && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 8) cancelHold();
       if (e.pointerId === penId) {
-        addPoints(e);
+        tools.move(e, toProject, local(e));
         return;
       }
       if (!touches.has(e.pointerId)) return;
@@ -369,6 +305,8 @@ export function CanvasView() {
       ro.disconnect();
       dispose();
       disposeFit();
+      disposeFloat();
+      applyFloating();
       cancelAnimationFrame(raf);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
@@ -382,6 +320,14 @@ export function CanvasView() {
     <div class="canvas-wrap" ref={wrap} data-help="Lienzo" data-help-docs="gestos"
       data-help-text="Dibujás con el stylus en la capa y el frame actuales. Con los dedos: 1 dedo mueve, 2 dedos hacen zoom/rotan; tap con 2 dedos = deshacer, 3 = rehacer. Stylus quieto ~1 s = pie menu.">
       <canvas ref={cv} class="stage" />
+      {floating.value && (
+        <div class="float-bar">
+          <span class="hint">Selección: arrastrá para mover, esquinas = escala, círculo = rotar</span>
+          <button onClick={flipFloating} title="Voltear horizontal">⇋ Voltear</button>
+          <button class="primary" onClick={applyFloating}>✓ Aplicar</button>
+          <button onClick={cancelFloating}>✕ Cancelar</button>
+        </div>
+      )}
     </div>
   );
 }

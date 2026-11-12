@@ -15,10 +15,14 @@ export const layerId = signal<Id>('');
 export const selection = signal<Selection>({});
 export const playing = signal(false);
 
-export type Tool = 'pencil' | 'eraser';
+export type Tool = 'pencil' | 'eraser' | 'fill' | 'shape' | 'lasso';
+export type ShapeKind = 'line' | 'rect' | 'ellipse';
 export const tool = signal<Tool>('pencil');
 export const pencil = signal({ size: 6, opacity: 1, color: '#1b1b1f', pressureSize: true, pressureOpacity: false });
 export const eraser = signal({ size: 30, opacity: 1, pressureSize: true });
+export const shapeOpts = signal<{ kind: ShapeKind; fill: boolean }>({ kind: 'line', fill: false });
+/** sample: de dónde se toman los bordes para rellenar (capa actual o todas las visibles) */
+export const fillOpts = signal<{ tolerance: number; grow: number; sample: 'layer' | 'all' }>({ tolerance: 40, grow: 1, sample: 'all' });
 export const onion = signal({ enabled: false, before: 1, after: 1, opacity: 0.35, allLayers: false, colorBefore: '#e0483e', colorAfter: '#2f9e5b' });
 /** Al dibujar en medio de una instancia sostenida: crear instancia nueva en el cabezal. */
 export const autoInstance = signal(false);
@@ -177,7 +181,11 @@ async function applyPixels(p: PixelPatch, which: 'before' | 'after') {
   markDirty(p.drawingId);
 }
 
+/** Ganchos para que herramientas con estado (lazo flotante) se resuelvan antes de deshacer/rehacer. */
+export const historyHooks = { before: () => {} };
+
 export async function undo() {
+  historyHooks.before();
   const e = undoStack.pop();
   if (!e) return;
   redoStack.push(e);
@@ -188,6 +196,7 @@ export async function undo() {
 }
 
 export async function redo() {
+  historyHooks.before();
   const e = redoStack.pop();
   if (!e) return;
   undoStack.push(e);

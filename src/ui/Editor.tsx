@@ -1,9 +1,13 @@
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
 import {
-  canRedo, canUndo, clip, clipId, editLayer, editProject, eraser, fingerDraws, flushProject, frame, layer, onion,
-  pencil, pieHoldMs, playing, project, redo, say, selection, tool, toast, undo, view,
+  canRedo, canUndo, clip, clipId, editLayer, editProject, eraser, fillOpts, fingerDraws, flushProject, frame, layer, onion,
+  pencil, pieHoldMs, playing, project, redo, say, selection, shapeOpts, tool, toast, undo, view,
+  type ShapeKind, type Tool,
 } from '../model/store';
+import { groupOf } from '../model/evaluate';
+import { editGroup } from '../model/actions';
+import { applyFloating, cancelFloating, flipFloating, floating } from '../tools/controller';
 import {
   addClip, currentPlayRange, deleteClip, deleteInstance, openClip, preloadClip, renameClip, stepFrame, togglePlay,
 } from '../model/actions';
@@ -93,7 +97,8 @@ function useKeys() {
       } else if (k === 'delete' || k === 'backspace') {
         deleteInstance();
       } else if (k === 'escape') {
-        selection.value = {};
+        if (floating.peek()) cancelFloating();
+        else selection.value = {};
       } else if (k === ' ') {
         e.preventDefault();
         togglePlay();
@@ -101,6 +106,10 @@ function useKeys() {
       else if (k === 'arrowright') stepFrame(1);
       else if (k === 'b') tool.value = 'pencil';
       else if (k === 'e') tool.value = 'eraser';
+      else if (k === 'g') tool.value = 'fill';
+      else if (k === 'u') tool.value = 'shape';
+      else if (k === 'l') tool.value = 'lasso';
+      else if (k === 'enter' && floating.peek()) applyFloating();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -192,13 +201,21 @@ function TopBar() {
   );
 }
 
+const TOOLS: { v: Tool; icon: string; title: string }[] = [
+  { v: 'pencil', icon: '✎', title: 'Lápiz (B)' },
+  { v: 'eraser', icon: '⌫', title: 'Goma (E)' },
+  { v: 'fill', icon: '◧', title: 'Relleno (G)' },
+  { v: 'shape', icon: '◯', title: 'Formas: línea, rectángulo, elipse (U)' },
+  { v: 'lasso', icon: '⬚', title: 'Lazo: seleccionar y transformar (L)' },
+];
+
 function ToolBar() {
   return (
     <div class="toolbar" data-help="Herramientas" data-help-docs="dibujo"
-      data-help-text="✎ lápiz (B) y ⌫ goma (E). El círculo muestra el color actual. Las opciones de cada una están en el panel lateral.">
-
-      <button class={tool.value === 'pencil' ? 'on' : ''} onClick={() => (tool.value = 'pencil')} title="Lápiz (B)">✎</button>
-      <button class={tool.value === 'eraser' ? 'on' : ''} onClick={() => (tool.value = 'eraser')} title="Goma (E)">⌫</button>
+      data-help-text="✎ lápiz (B), ⌫ goma (E), ◧ relleno (G), ◯ formas (U) y ⬚ lazo para seleccionar y transformar (L). El círculo de abajo muestra el color actual. Las opciones de cada una están en el panel lateral.">
+      {TOOLS.map((t) => (
+        <button class={tool.value === t.v ? 'on' : ''} onClick={() => (tool.value = t.v)} title={t.title}>{t.icon}</button>
+      ))}
       <div class="swatch-big" style={{ background: pencil.value.color }} />
     </div>
   );
@@ -215,43 +232,115 @@ function Range(props: { label: string; min: number; max: number; step?: number; 
   );
 }
 
+const SHAPES: { v: ShapeKind; label: string }[] = [
+  { v: 'line', label: '╱ Línea' }, { v: 'rect', label: '▭ Rect.' }, { v: 'ellipse', label: '◯ Elipse' },
+];
+
+function ColorPicker() {
+  const p = project.value!;
+  const pc = pencil.value;
+  return (
+    <div class="colors">
+      <input type="color" value={pc.color} onInput={(e) => (pencil.value = { ...pc, color: (e.target as HTMLInputElement).value })} />
+      {p.palette.map((col, i) => (
+        <button class={'sw' + (col === pc.color ? ' on' : '')} style={{ background: col }}
+          onClick={() => (pencil.value = { ...pc, color: col })}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (confirm('¿Quitar color de la paleta?')) editProject('paleta', (pp) => ({ ...pp, palette: pp.palette.filter((_, k) => k !== i) }));
+          }} />
+      ))}
+      <button class="sw add" title="Agregar color actual a la paleta"
+        onClick={() => !p.palette.includes(pc.color) && editProject('paleta', (pp) => ({ ...pp, palette: [...pp.palette, pc.color] }))}>+</button>
+    </div>
+  );
+}
+
+function ToolOptions() {
+  const t = tool.value;
+  const pc = pencil.value;
+  const er = eraser.value;
+  const so = shapeOpts.value;
+  const fo = fillOpts.value;
+  const pct = (v: number) => Math.round(v * 100) + '%';
+  if (t === 'eraser') {
+    return (
+      <section data-help="Opciones de la goma" data-help-docs="dibujo" data-help-text="Tamaño, fuerza y presión de la goma.">
+        <h4>Goma</h4>
+        <Range label="Tamaño" min={2} max={250} value={er.size} onInput={(v) => (eraser.value = { ...er, size: v })} />
+        <Range label="Fuerza" min={0.05} max={1} step={0.05} value={er.opacity} fmt={pct} onInput={(v) => (eraser.value = { ...er, opacity: v })} />
+        <label class="check"><input type="checkbox" checked={er.pressureSize} onChange={() => (eraser.value = { ...er, pressureSize: !er.pressureSize })} /> Presión → tamaño</label>
+      </section>
+    );
+  }
+  if (t === 'lasso') {
+    return (
+      <section data-help="Lazo" data-help-docs="lazo" data-help-text="Rodeá con el stylus la parte del dibujo a seleccionar. Después: arrastrar adentro mueve, las esquinas escalan y el círculo rota. Aplicar confirma, Cancelar descarta.">
+        <h4>Lazo</h4>
+        <p class="hint">Rodeá una parte del dibujo de la capa actual. Después arrastrala para moverla, usá las esquinas para escalar y el círculo de arriba para rotar (con imán cada 15°).</p>
+        {floating.value && (
+          <div class="row-btns">
+            <button onClick={flipFloating}>⇋ Voltear</button>
+            <button class="primary" onClick={applyFloating}>✓ Aplicar</button>
+            <button onClick={cancelFloating}>✕ Cancelar</button>
+          </div>
+        )}
+        <p class="hint">Se confirma solo al cambiar de herramienta, frame o capa.</p>
+      </section>
+    );
+  }
+  return (
+    <section data-help={t === 'fill' ? 'Opciones del relleno' : t === 'shape' ? 'Opciones de formas' : 'Opciones del lápiz'} data-help-docs="dibujo"
+      data-help-text={t === 'fill'
+        ? 'Tolerancia (cuánto puede variar el color), expandir (cubre el borde suave de la línea), y si los bordes se toman de la capa actual o de todas las capas visibles. Usa el color y la opacidad del lápiz.'
+        : 'Tamaño, opacidad, color y paleta del proyecto (+ agrega el color actual; mantener presionado un color lo quita).'}>
+      <h4>{t === 'fill' ? 'Relleno' : t === 'shape' ? 'Formas' : 'Lápiz'}</h4>
+      {t === 'shape' && (
+        <>
+          <div class="row-btns">
+            {SHAPES.map((s) => (
+              <button class={so.kind === s.v ? 'on' : ''} onClick={() => (shapeOpts.value = { ...so, kind: s.v })}>{s.label}</button>
+            ))}
+          </div>
+          {so.kind !== 'line' && (
+            <label class="check"><input type="checkbox" checked={so.fill} onChange={() => (shapeOpts.value = { ...so, fill: !so.fill })} /> Rellena</label>
+          )}
+        </>
+      )}
+      {t === 'fill' ? (
+        <>
+          <Range label="Tolerancia" min={0} max={200} value={fo.tolerance} onInput={(v) => (fillOpts.value = { ...fo, tolerance: v })} />
+          <Range label="Expandir" min={0} max={6} value={fo.grow} fmt={(v) => v + 'px'} onInput={(v) => (fillOpts.value = { ...fo, grow: v })} />
+          <label class="row">
+            <span>Bordes de</span>
+            <select value={fo.sample} onChange={(e) => (fillOpts.value = { ...fo, sample: (e.target as HTMLSelectElement).value as 'layer' | 'all' })}>
+              <option value="all">Todas las capas visibles</option>
+              <option value="layer">Sólo la capa actual</option>
+            </select>
+          </label>
+        </>
+      ) : (
+        <Range label="Tamaño" min={1} max={120} value={pc.size} onInput={(v) => (pencil.value = { ...pc, size: v })} />
+      )}
+      <Range label="Opacidad" min={0.05} max={1} step={0.05} value={pc.opacity} fmt={pct} onInput={(v) => (pencil.value = { ...pc, opacity: v })} />
+      {t === 'pencil' && (
+        <label class="check"><input type="checkbox" checked={pc.pressureSize} onChange={() => (pencil.value = { ...pc, pressureSize: !pc.pressureSize })} /> Presión → tamaño</label>
+      )}
+      <ColorPicker />
+    </section>
+  );
+}
+
 function SidePanel() {
   const p = project.value!;
   const L = layer.value;
-  const pc = pencil.value;
-  const er = eraser.value;
+  const c = clip.value;
+  const g = c && L ? groupOf(c, L) : null;
   const o = onion.value;
   const pct = (v: number) => Math.round(v * 100) + '%';
   return (
     <div class="side">
-      {tool.value === 'pencil' ? (
-        <section data-help="Opciones del lápiz" data-help-docs="dibujo" data-help-text="Tamaño, opacidad, si la presión del stylus cambia el grosor, color y paleta del proyecto (+ agrega el color actual; mantener presionado un color lo quita).">
-          <h4>Lápiz</h4>
-          <Range label="Tamaño" min={1} max={120} value={pc.size} onInput={(v) => (pencil.value = { ...pc, size: v })} />
-          <Range label="Opacidad" min={0.05} max={1} step={0.05} value={pc.opacity} fmt={pct} onInput={(v) => (pencil.value = { ...pc, opacity: v })} />
-          <label class="check"><input type="checkbox" checked={pc.pressureSize} onChange={() => (pencil.value = { ...pc, pressureSize: !pc.pressureSize })} /> Presión → tamaño</label>
-          <div class="colors">
-            <input type="color" value={pc.color} onInput={(e) => (pencil.value = { ...pc, color: (e.target as HTMLInputElement).value })} />
-            {p.palette.map((col, i) => (
-              <button class={'sw' + (col === pc.color ? ' on' : '')} style={{ background: col }}
-                onClick={() => (pencil.value = { ...pc, color: col })}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (confirm('¿Quitar color de la paleta?')) editProject('paleta', (pp) => ({ ...pp, palette: pp.palette.filter((_, k) => k !== i) }));
-                }} />
-            ))}
-            <button class="sw add" title="Agregar color actual a la paleta"
-              onClick={() => !p.palette.includes(pc.color) && editProject('paleta', (pp) => ({ ...pp, palette: [...pp.palette, pc.color] }))}>+</button>
-          </div>
-        </section>
-      ) : (
-        <section data-help="Opciones de la goma" data-help-docs="dibujo" data-help-text="Tamaño, fuerza y presión de la goma.">
-          <h4>Goma</h4>
-          <Range label="Tamaño" min={2} max={250} value={er.size} onInput={(v) => (eraser.value = { ...er, size: v })} />
-          <Range label="Fuerza" min={0.05} max={1} step={0.05} value={er.opacity} fmt={pct} onInput={(v) => (eraser.value = { ...er, opacity: v })} />
-          <label class="check"><input type="checkbox" checked={er.pressureSize} onChange={() => (eraser.value = { ...er, pressureSize: !er.pressureSize })} /> Presión → tamaño</label>
-        </section>
-      )}
+      <ToolOptions />
       {L && (
         <section data-help="Capa actual" data-help-docs="capas" data-help-text="Opacidad y modo de fusión (multiplicar, trama, etc.) de la capa seleccionada en la timeline.">
           <h4>Capa: {L.name}</h4>
@@ -263,6 +352,28 @@ function SidePanel() {
               {BLENDS.map((b) => <option value={b.v}>{b.label}</option>)}
             </select>
           </label>
+          {L.kind === 'video' && (
+            <>
+              <label class="row">
+                <span>Empieza en el frame</span>
+                <input type="number" min={1} value={L.start + 1} class="num"
+                  onChange={(e) => editLayer('inicio video', (l) => ({ ...l, start: Math.max(0, Number((e.target as HTMLInputElement).value) - 1 || 0) }))} />
+              </label>
+              <label class="row">
+                <span>Saltear frames del video</span>
+                <input type="number" min={0} value={L.srcIn ?? 0} class="num"
+                  onChange={(e) => editLayer('offset video', (l) => ({ ...l, srcIn: Math.max(0, Number((e.target as HTMLInputElement).value) || 0) }))} />
+              </label>
+              <p class="hint">Video de referencia: no se puede dibujar encima. Creá otra capa para dibujar.</p>
+            </>
+          )}
+        </section>
+      )}
+      {g && (
+        <section data-help="Grupo" data-help-docs="capas" data-help-text="Opacidad del grupo de la capa actual: se aplica al resultado de todas sus capas juntas.">
+          <h4>Grupo: {g.name}</h4>
+          <Range label="Opacidad" min={0} max={1} step={0.05} value={g.opacity} fmt={pct}
+            onInput={(v) => editGroup('opacidad', g.id, (x) => ({ ...x, opacity: v }))} />
         </section>
       )}
       <section data-help="Papel cebolla" data-help-docs="cebolla" data-help-text="Cuántos dibujos antes (rojo) y después (verde) mostrar, su opacidad, y si se aplica sólo a la capa actual o a todas.">

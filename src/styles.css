@@ -255,3 +255,25 @@ kbd { background: var(--bg3); border: 1px solid var(--line); border-bottom-width
 .help-bubble b { display: flex; align-items: center; gap: 8px; }
 .help-bubble p { margin: 6px 0 0; font-size: 14px; line-height: 1.45; }
 .help-bubble a { display: inline-block; margin-top: 6px; color: var(--accent2); text-decoration: underline; cursor: pointer; }
+
+/* ---------- fase 3 */
+.pie-ring { left: -158px; top: -158px; width: 316px; height: 316px; }
+.pie-layers { top: -130px; }
+.toolbar button { font-size: 18px; }
+.zl { font-size: 13px; color: var(--fg2); padding: 0 1px 0 4px; }
+.ghead { display: flex; align-items: center; gap: 3px; padding: 0 4px; border-bottom: 1px solid var(--line); background: #2b2d38; }
+.ghead .ib { min-width: 24px; width: 24px; min-height: 20px; height: 20px; padding: 0; font-size: 12px; }
+.ghead .ib.off { opacity: .5; }
+.gname { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c9cde8; }
+.gtrack { border-bottom: 1px solid var(--line); background: #ffffff06; }
+.lhead.ingroup { padding-left: 12px; box-shadow: inset 4px 0 0 #6c7398; }
+.lhead.ingroup.active { box-shadow: inset 4px 0 0 var(--accent); }
+.inst.video { background: repeating-linear-gradient(135deg, #2c4a44 0 8px, #29433e 8px 16px); border-color: #4bb37a; }
+.vlabel { font-size: 11px; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cfeee0; pointer-events: none; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.row-btns button { min-height: 30px; font-size: 12px; padding: 0 7px; }
+.num { width: 70px; min-height: 30px; background: var(--bg3); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; }
+.row { margin: 5px 0; }
+.float-bar { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  background: #1e1f24ee; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 4px 16px #000a; z-index: 2; max-width: calc(100% - 20px); }
+.float-bar .hint { margin: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

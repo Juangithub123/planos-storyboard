@@ -29,3 +29,9 @@ reordenar instancias arrastrando (táctil: mantener presionado), copiar/pegar in
 cortar clip en el cabezal, duplicar clip, pie menu (stylus quieto ~1 s, click derecho con mouse),
 vista Secuencia con reproductor del animatic y storyboard reordenable.
 Atajos: Ctrl+Z/Y, Ctrl+C/V, Ctrl+A, Supr, Esc, espacio, flechas, B/E.
+
+## Fase 3
+Relleno (bordes de la capa actual o de todas las visibles, tolerancia, expandir), formas (línea, rectángulo,
+elipse, con o sin relleno), lazo con mover/escalar/rotar/voltear, grupos de capas (plegar, visibilidad, bloqueo,
+opacidad de grupo), capas de referencia de imagen y de video (guardadas en IndexedDB y en el backup),
+zoom horizontal y vertical de la timeline con reset y fit. Base de datos v2 (migración automática desde v1).

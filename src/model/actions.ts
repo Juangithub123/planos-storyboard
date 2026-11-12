@@ -4,7 +4,8 @@ import {
 } from './store';
 import { addEach, insertInstance, instanceIndexAt, instanceStart, layerEnd, removeInstance, setDuration, splitAt } from './timing';
 import { clipLength, playRange, resolveAt } from './evaluate';
-import { uid, type Behavior } from './types';
+import { uid, type Behavior, type Group, type Layer } from './types';
+import { dissolveGroup, groupLayer, inheritGroup, moveLayerStep, normalizeGroups, ungroupLayer, updateGroup } from './groups';
 import { createDrawing, loadDrawing } from '../render/drawings';
 
 /** Acciones de alto nivel que usa la UI. */
@@ -194,14 +195,15 @@ export function toggleHold() {
 }
 
 // --- capas
-export function addLayer() {
+export function addLayer(base?: Layer) {
   const p = project.peek();
   const c = clip.peek();
   if (!p || !c) return;
-  const L = makeLayer(`Capa ${c.layers.length + 1}`);
   const at = Math.max(0, c.layers.findIndex((l) => l.id === layerId.peek()));
+  const L = inheritGroup(c, at, base ?? makeLayer(`Capa ${c.layers.length + 1}`));
   commit(withClip(p, c.id, (cc) => ({ ...cc, layers: [...cc.layers.slice(0, at), L, ...cc.layers.slice(at)] })), 'nueva capa');
   layerId.value = L.id;
+  return L;
 }
 
 export function deleteLayer() {
@@ -210,7 +212,7 @@ export function deleteLayer() {
   if (!p || !c || c.layers.length <= 1) return say('El clip necesita al menos una capa');
   const at = c.layers.findIndex((l) => l.id === layerId.peek());
   const layers = c.layers.filter((l) => l.id !== layerId.peek());
-  commit(withClip(p, c.id, (cc) => ({ ...cc, layers })), 'borrar capa');
+  commit(withClip(p, c.id, (cc) => normalizeGroups({ ...cc, layers })), 'borrar capa');
   layerId.value = layers[Math.min(at, layers.length - 1)].id;
   selection.value = {};
 }
@@ -218,14 +220,32 @@ export function deleteLayer() {
 export function moveLayer(dir: -1 | 1) {
   const c = clip.peek();
   if (!c) return;
-  const i = c.layers.findIndex((l) => l.id === layerId.peek());
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= c.layers.length) return;
-  editClip('mover capa', (cc) => {
-    const layers = cc.layers.slice();
-    [layers[i], layers[j]] = [layers[j], layers[i]];
-    return { ...cc, layers };
-  });
+  const lid = layerId.peek();
+  editClip('mover capa', (cc) => moveLayerStep(cc, lid, dir));
+}
+
+// --- grupos
+export function groupCurrentLayer() {
+  const c = clip.peek();
+  const L = layer.peek();
+  if (!c || !L) return;
+  if (L.groupId) return say('La capa ya está en un grupo');
+  const r = groupLayer(c, L.id, uid, `Grupo ${(c.groups?.length ?? 0) + 1}`);
+  editClip('agrupar', () => r.clip);
+}
+
+export function ungroupCurrentLayer() {
+  const L = layer.peek();
+  if (!L?.groupId) return say('La capa no está en un grupo');
+  editClip('sacar del grupo', (cc) => ungroupLayer(cc, L.id));
+}
+
+export function dissolveGroupAction(gid: string) {
+  editClip('desagrupar', (cc) => dissolveGroup(cc, gid));
+}
+
+export function editGroup(label: string, gid: string, fn: (g: Group) => Group) {
+  editClip(label, (cc) => updateGroup(cc, gid, fn));
 }
 
 // --- clips

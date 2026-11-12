@@ -177,6 +177,16 @@ const SECTIONS: Section[] = [
       <>
         <ul>
           <li><b>Lápiz</b> (<K>B</K>) y <b>goma</b> (<K>E</K>) con presión: en el panel lateral elegís tamaño, opacidad y si la presión cambia el tamaño.</li>
+          <li><b>Relleno</b> (<K>G</K>): tocá dentro de un área cerrada y se pinta con el color y la opacidad del lápiz.
+            <ul>
+              <li><b>Bordes de: todas las capas visibles</b> (por defecto): podés tener la línea en una capa y pintar el color en otra capa de abajo.</li>
+              <li><b>Sólo la capa actual</b>: usa únicamente lo que hay dibujado en la capa en la que pintás.</li>
+              <li><b>Tolerancia</b>: cuánto puede variar el color para seguir rellenando. <b>Expandir</b>: agranda el relleno unos píxeles para tapar el borde suave de la línea.</li>
+              <li>Si el área no está cerrada, el color se escapa: deshacé, cerrá el hueco con el lápiz y volvé a rellenar.</li>
+            </ul>
+          </li>
+          <li><b>Formas</b> (<K>U</K>): línea recta, rectángulo o elipse, arrastrando desde un extremo al otro. Usan el tamaño, la opacidad y el color del lápiz. Rectángulo y elipse pueden ir rellenos.</li>
+          <li><b>Lazo</b> (<K>L</K>): para seleccionar y transformar parte de un dibujo (ver la sección "Lazo y transformar").</li>
           <li><b>Color</b>: el selector y la paleta del proyecto. <b>+</b> agrega el color actual a la paleta; mantener presionado (o click derecho) un color lo quita.</li>
           <li>Dibujás siempre en la <b>capa actual</b> (resaltada en la timeline) y en el <b>frame del cabezal</b>:
             <ul>
@@ -186,6 +196,26 @@ const SECTIONS: Section[] = [
             </ul>
           </li>
           <li>No se puede dibujar en capas bloqueadas u ocultas.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'lazo', title: 'Lazo y transformar',
+    body: () => (
+      <>
+        <ul>
+          <li>Con el <b>lazo</b> (<K>L</K>) rodeá con el stylus la parte del dibujo que querés mover. Trabaja sobre el dibujo que se ve en el cabezal, en la capa actual.</li>
+          <li>Aparece un recuadro punteado con manijas:
+            <ul>
+              <li><b>Arrastrar adentro</b>: mover.</li>
+              <li><b>Esquinas</b>: escalar (proporcional, desde el centro).</li>
+              <li><b>Círculo de arriba</b>: rotar (con imán cada 15°).</li>
+            </ul>
+          </li>
+          <li>Botones: <b>⇋ Voltear</b> (espejo horizontal), <b>✓ Aplicar</b> (<K>Enter</K>) y <b>✕ Cancelar</b> (<K>Esc</K>).</li>
+          <li>Si tocás afuera del recuadro, se aplica y empezás una selección nueva. También se aplica solo al cambiar de herramienta, frame, capa o clip.</li>
+          <li>Todo el movimiento queda como un solo paso de deshacer.</li>
         </ul>
       </>
     ),
@@ -217,7 +247,14 @@ const SECTIONS: Section[] = [
           <li><b>Reordenar</b>: arrastrá una instancia ya seleccionada (en táctil: mantené presionado ~0,4 s y arrastrá). La barra amarilla muestra dónde cae.</li>
           <li>Botones: <b>+ Inst</b> (instancia vacía en el cabezal), <b>Dup</b> (duplica el dibujo), <b>Vacía</b> (hueco después), <b>Borrar</b>, <b>−1/+1</b> (duración), <b>Hold</b>.</li>
           <li>Transporte: inicio, instancia anterior/siguiente, frame anterior/siguiente, play (<K>espacio</K>), final. Con el teclado, <K>←</K> <K>→</K> mueven de a un frame.</li>
-          <li><b>− / +</b> al final de la barra (o <K>Ctrl</K>+rueda) cambian el zoom de la timeline.</li>
+          <li><b>Zoom de la timeline</b> (grupo ↔ ↕ de la barra):
+            <ul>
+              <li><b>↔ − / +</b>: zoom horizontal (ancho de cada frame).</li>
+              <li><b>↕ − / +</b>: zoom vertical (alto de cada capa). Con filas altas las miniaturas se ven más grandes; con filas bajas entran más capas (se ocultan los selectores Cut/Hold/Loop).</li>
+              <li><b>⟲</b> vuelve al tamaño normal. <b>⊡</b> (fit) ajusta para que entren todo el clip y todas las capas en la vista.</li>
+              <li>En PC: <K>Ctrl</K>+rueda (horizontal) y <K>Alt</K>+rueda (vertical).</li>
+            </ul>
+          </li>
         </ul>
       </>
     ),
@@ -233,6 +270,45 @@ const SECTIONS: Section[] = [
           <li><b>Loop</b>: repite las instancias en ciclo.</li>
           <li>Las extensiones de Hold/Loop se ven rayadas en la timeline.</li>
           <li><b>+ Capa</b>, <b>↑ ↓</b> (orden), <b>Copiar capa</b>, <b>− Capa</b>. Opacidad y modo de fusión de la capa actual están en el panel lateral.</li>
+          <li><b>Modos de fusión</b>: Normal, Multiplicar (ideal para color/sombras debajo de la línea), Trama, Superponer, Oscurecer, Aclarar y Sumar.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'grupos', title: 'Grupos de capas',
+    body: () => (
+      <>
+        <ul>
+          <li><b>Agrupar</b> crea un grupo (carpeta 📁) con la capa actual. Las capas nuevas que agregues adentro del grupo quedan en él.</li>
+          <li>Con <b>↑ ↓</b>, una capa que llega al borde de un grupo <b>entra</b> o <b>sale</b> de él en vez de saltarlo.</li>
+          <li><b>Sacar</b> saca la capa actual de su grupo (queda justo debajo).</li>
+          <li>En el encabezado del grupo: ▸/▾ pliega o despliega, ◉ oculta todo el grupo, 🔓 lo bloquea, doble toque en el nombre lo renombra, y ✕ desarma el grupo (las capas quedan sueltas, no se borran).</li>
+          <li>La <b>opacidad del grupo</b> está en el panel lateral cuando la capa actual pertenece a uno: se aplica al resultado de todas sus capas juntas.</li>
+          <li>Un grupo que se queda sin capas desaparece solo.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'referencias', title: 'Imágenes y videos de referencia',
+    body: () => (
+      <>
+        <ul>
+          <li><b>+ Imagen</b> (barra de la timeline) importa una imagen (fondo, layout, foto) como capa nueva:
+            <ul>
+              <li>Ocupa todo el clip (Hold antes y después) y se ajusta al cuadro sin deformarse.</li>
+              <li>Entra <b>bloqueada</b> para que no le dibujes encima sin querer. Si la desbloqueás, es un dibujo normal: podés borrar, pintar o moverla con el lazo.</li>
+            </ul>
+          </li>
+          <li><b>+ Video</b> importa un video como capa de referencia (para timing o rotoscopía):
+            <ul>
+              <li>Se muestra frame a frame sincronizado con la timeline, al 60% de opacidad (ajustable).</li>
+              <li>No se puede dibujar sobre esa capa: creá otra capa arriba para dibujar.</li>
+              <li>En el panel lateral: <b>Empieza en el frame</b> (dónde arranca en el clip) y <b>Saltear frames del video</b> (para usar sólo una parte).</li>
+              <li>El video se guarda en el dispositivo y entra en el backup .zip, así que los backups con videos pesan más.</li>
+            </ul>
+          </li>
         </ul>
       </>
     ),
@@ -331,6 +407,9 @@ const SECTIONS: Section[] = [
       <table class="keys">
         <tbody>
           <tr><td><K>B</K> / <K>E</K></td><td>Lápiz / goma</td></tr>
+          <tr><td><K>G</K> / <K>U</K> / <K>L</K></td><td>Relleno / formas / lazo</td></tr>
+          <tr><td><K>Enter</K> / <K>Esc</K></td><td>Aplicar / cancelar la selección del lazo</td></tr>
+          <tr><td><K>Ctrl</K>+rueda / <K>Alt</K>+rueda</td><td>Zoom horizontal / vertical de la timeline</td></tr>
           <tr><td><K>Espacio</K></td><td>Play / pausa</td></tr>
           <tr><td><K>←</K> <K>→</K></td><td>Frame anterior / siguiente</td></tr>
           <tr><td><K>Ctrl</K>+<K>Z</K> / <K>Ctrl</K>+<K>Y</K></td><td>Deshacer / rehacer</td></tr>

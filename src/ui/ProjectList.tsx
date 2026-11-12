@@ -4,6 +4,7 @@ import type { Project } from '../model/types';
 import { deleteProject, listProjects, putProject, requestPersistence } from '../storage/db';
 import { collectGarbage, exportBackup, importBackup } from '../storage/backup';
 import { initDrawings } from '../render/drawings';
+import { initVideos } from '../render/videos';
 import { screen } from './Editor';
 import { DocsModal, docsOpen } from './Help';
 
@@ -18,6 +19,7 @@ const FPS = [12, 24, 25, 30];
 
 export async function enterProject(p: Project) {
   initDrawings(p.id, p.width, p.height);
+  initVideos(p.id);
   await collectGarbage(p).catch(() => {});
   openProject(p);
   screen.value = 'editor';

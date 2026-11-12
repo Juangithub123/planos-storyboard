@@ -55,3 +55,42 @@ export function playRange(clip: Clip): [number, number] {
   const b = Math.max(a, Math.min(len - 1, clip.playOut ?? len - 1));
   return [a, b];
 }
+
+// ---------------------------------------------------------------------------
+// Grupos
+
+import type { Group } from './types';
+
+export function groupOf(clip: Clip, L: Layer): Group | null {
+  if (!L.groupId) return null;
+  return clip.groups?.find((g) => g.id === L.groupId) ?? null;
+}
+
+/** Visible de verdad: la capa y su grupo. */
+export function isVisible(clip: Clip, L: Layer): boolean {
+  const g = groupOf(clip, L);
+  return L.visible && (!g || g.visible);
+}
+
+/** Bloqueada por sí misma, por su grupo, o por ser capa de video. */
+export function isLocked(clip: Clip, L: Layer): boolean {
+  const g = groupOf(clip, L);
+  return L.locked || !!g?.locked || L.kind === 'video';
+}
+
+export type Row = { type: 'group'; group: Group; first: number } | { type: 'layer'; layer: Layer; index: number };
+
+/** Filas de la timeline: encabezado de grupo antes de su primera capa; los grupos plegados ocultan sus capas. */
+export function timelineRows(clip: Clip): Row[] {
+  const rows: Row[] = [];
+  const seen = new Set<string>();
+  clip.layers.forEach((L, i) => {
+    const g = groupOf(clip, L);
+    if (g && !seen.has(g.id)) {
+      seen.add(g.id);
+      rows.push({ type: 'group', group: g, first: i });
+    }
+    if (!g || !g.collapsed) rows.push({ type: 'layer', layer: L, index: i });
+  });
+  return rows;
+}
