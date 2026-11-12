@@ -148,7 +148,7 @@ function setProject(p: Project) {
 
 /** Cambio de estructura con entrada de undo. `before` permite commitear tras una vista previa. */
 let lastCommit = { label: '', t: 0 };
-const COALESCE = new Set(['opacidad', 'paleta']);
+const COALESCE = new Set(['opacidad', 'paleta', 'cámara', 'volumen audio', 'volumen pista']);
 
 export function commit(next: Project, label: string, before: Project | null = project.value) {
   const now = Date.now();

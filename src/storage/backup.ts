@@ -14,6 +14,7 @@ export function referencedDrawings(p: Project): Set<string> {
 export function referencedAssets(p: Project): Set<string> {
   const s = new Set<string>();
   for (const id of p.clipOrder) for (const L of p.clips[id].layers) if (L.assetId) s.add(L.assetId);
+  for (const t of p.audioTracks ?? []) for (const c of t.clips) s.add(c.assetId);
   return s;
 }
 
@@ -27,7 +28,7 @@ export async function collectGarbage(p: Project) {
   if (orphanA.length) await deleteAssets(p.id, orphanA);
 }
 
-function download(blob: Blob, name: string) {
+export function download(blob: Blob, name: string) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -37,7 +38,7 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 }
 
-const safe = (s: string) => s.replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '_').trim() || 'proyecto';
+export const safeName = (s: string) => s.replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]+/g, '_').trim() || 'proyecto';
 
 /** Exporta proyecto + dibujos en un .zip y lo descarga. */
 export async function exportBackup(p: Project): Promise<void> {
@@ -53,7 +54,7 @@ export async function exportBackup(p: Project): Promise<void> {
   const zip = zipSync(files, { level: 6 });
   const d = new Date();
   const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-  download(new Blob([zip], { type: 'application/zip' }), `${safe(p.name)}-${stamp}.planos.zip`);
+  download(new Blob([zip], { type: 'application/zip' }), `${safeName(p.name)}-${stamp}.planos.zip`);
 }
 
 /** Importa un backup como proyecto nuevo (nunca pisa uno existente). */

@@ -15,6 +15,8 @@ interface V {
   /** copia del último frame decodificado (evita parpadeos mientras busca) */
   snap: HTMLCanvasElement;
   hasSnap: boolean;
+  /** tiempo del video al que corresponde la copia */
+  snapTime: number;
 }
 
 function snapshot(v: V) {
@@ -26,6 +28,7 @@ function snapshot(v: V) {
   }
   snap.getContext('2d')!.drawImage(el, 0, 0);
   v.hasSnap = true;
+  v.snapTime = el.currentTime;
 }
 
 let projectId = '';
@@ -55,7 +58,7 @@ function load(id: Id) {
     el.playsInline = true;
     el.preload = 'auto';
     const url = URL.createObjectURL(blob);
-    const v: V = { el, url, ready: false, want: 0, snap: document.createElement('canvas'), hasSnap: false };
+    const v: V = { el, url, ready: false, want: 0, snap: document.createElement('canvas'), hasSnap: false, snapTime: -1 };
     el.addEventListener('loadeddata', () => {
       v.ready = true;
       snapshot(v);
@@ -119,4 +122,33 @@ export function containRect(w: number, h: number, W: number, H: number) {
   const dw = w * k;
   const dh = h * k;
   return { x: (W - dw) / 2, y: (H - dh) / 2, w: dw, h: dh };
+}
+
+/**
+ * Posiciona el video exactamente en `time` y espera ese frame (para exportar).
+ * Si el navegador no lo entrega en 3 s, devuelve el último frame disponible.
+ */
+export function videoFrameExact(id: Id, time: number): Promise<HTMLCanvasElement | null> {
+  return new Promise((resolve) => {
+    const deadline = performance.now() + 3000;
+    const tick = () => {
+      const v = vids.get(id);
+      if (!v) load(id);
+      else if (v.ready) {
+        const t = Math.max(0, Math.min(time, (v.el.duration || 0) - 0.001));
+        v.want = t;
+        if (v.hasSnap && Math.abs(v.snapTime - t) < 0.002) return resolve(v.snap);
+        if (!v.el.seeking) {
+          if (Math.abs(v.el.currentTime - t) < 0.002 && v.el.readyState >= 2) {
+            snapshot(v);
+            return resolve(v.snap);
+          }
+          v.el.currentTime = t;
+        }
+      }
+      if (performance.now() > deadline) return resolve(v?.hasSnap ? v.snap : null);
+      setTimeout(tick, 15);
+    };
+    tick();
+  });
 }

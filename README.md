@@ -35,3 +35,8 @@ Relleno (bordes de la capa actual o de todas las visibles, tolerancia, expandir)
 elipse, con o sin relleno), lazo con mover/escalar/rotar/voltear, grupos de capas (plegar, visibilidad, bloqueo,
 opacidad de grupo), capas de referencia de imagen y de video (guardadas en IndexedDB y en el backup),
 zoom horizontal y vertical de la timeline con reset y fit. Base de datos v2 (migración automática desde v1).
+
+## Fase 4
+Audio del proyecto (pistas, clips movibles, volumen, mute, scrub, forma de onda en la timeline del clip),
+cámara por clip (inicio/fin interpolados, marcos en el lienzo, arrastre), export de video (MP4 H.264+AAC
+o WebM con WebCodecs), secuencias PNG por capa o compuestas en .zip y PDF de storyboard (escritor propio).

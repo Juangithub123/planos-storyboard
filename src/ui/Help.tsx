@@ -402,6 +402,64 @@ const SECTIONS: Section[] = [
     ),
   },
   {
+    id: 'audio', title: 'Audio',
+    body: () => (
+      <>
+        <ul>
+          <li>El audio es del <b>proyecto</b>: queda fijo en el tiempo de la secuencia completa, no pegado a un clip. Si reordenás planos o cambiás su largo, las imágenes se corren respecto del audio (como en un editor de video): revisá la sincronía en la fila ♪ Audio de cada clip.</li>
+          <li>En la vista <b>Secuencia</b>, sección <b>Audio</b>:
+            <ul>
+              <li><b>+ Pista</b> crea una pista; <b>Importar audio…</b> agrega un archivo (mp3, wav, m4a, ogg…) en la pista seleccionada, empezando en el cabezal de la secuencia.</li>
+              <li>Tocá un clip de audio para seleccionarlo y arrastralo para moverlo en el tiempo.</li>
+              <li>Con un clip seleccionado: <b>Inicio</b> (frame de la secuencia), <b>Saltear</b> (segundos del archivo que no suenan), <b>Dura</b> (segundos que suena), <b>Vol</b>, <b>⇥ Cabezal</b> (mueve el inicio al cabezal) y ✕.</li>
+              <li>En cada pista: <b>M</b> (silenciar), volumen, doble toque en el nombre para renombrar, ✕ para borrarla.</li>
+            </ul>
+          </li>
+          <li>En la timeline de cada clip aparece una fila <b>♪ Audio</b> con la forma de onda del tramo que le corresponde, para sincronizar (lip sync, golpes de música).</li>
+          <li>Al reproducir un clip suena su tramo de audio (también en loop con Mark In/Out). Al arrastrar el cabezal suena un fragmento corto (<b>scrub</b>).</li>
+          <li>🔊/🔇 silencia la reproducción y el scrub cuando no lo necesitás. El export incluye el audio igual.</li>
+          <li>Los audios se guardan en el dispositivo y entran en el backup.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'camara', title: 'Cámara',
+    body: () => (
+      <>
+        <ul>
+          <li>Cada clip puede tener un movimiento simple de cámara: un encuadre de <b>inicio</b> y uno de <b>fin</b>, interpolados entre el primer y el último frame del recorte.</li>
+          <li>En el panel lateral → <b>Cámara</b>: activá <i>Usar cámara en este clip</i>, elegí <b>Inicio</b> o <b>Fin</b> y ajustá X, Y, Zoom y Rotación.</li>
+          <li><b>✥ Mover</b>: mientras está activo, arrastrar con el stylus en el lienzo mueve el encuadre elegido (en vez de dibujar). Apagalo para volver a dibujar.</li>
+          <li>En el lienzo se ven los marcos: <b>azul</b> = inicio, <b>naranja</b> = fin, <b>blanco punteado</b> = cámara en el frame actual. El lienzo siempre se dibuja completo.</li>
+          <li>Interpolación <b>suave</b> (arranca y frena despacio) o <b>lineal</b>. Botones para copiar inicio → fin y viceversa.</li>
+          <li>La cámara se ve en la vista <b>Secuencia</b> y en los exports (video, PDF y, si lo elegís, PNG compuesto).</li>
+          <li>Para paneos largos, dibujá un fondo más grande que el cuadro con zoom &gt; 1 en la cámara, o usá un zoom menor a 1 para alejar.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: 'exportar', title: 'Exportar',
+    body: () => (
+      <>
+        <p>Botón <b>⇪ Exportar</b> en la barra superior:</p>
+        <ul>
+          <li><b>Video animatic</b>: todos los clips en orden, con su recorte y su cámara, y el audio mezclado. Sale en <b>MP4</b> (H.264 + AAC) si el dispositivo lo soporta; si no, en <b>WebM</b>. Tamaño completo o mitad (más rápido).</li>
+          <li><b>Secuencia PNG</b> (.zip): para TVPaint u otro software.
+            <ul>
+              <li><b>Una carpeta por capa</b> (con transparencia) o <b>todo compuesto</b> (fondo blanco, opcionalmente con la cámara).</li>
+              <li>Del clip actual o de todos (una carpeta por clip, numeradas según el orden).</li>
+              <li>Todos los frames del recorte, holds incluidos, numerados desde 0001.</li>
+            </ul>
+          </li>
+          <li><b>PDF de storyboard</b>: A4 apaisado, 4 a 12 paneles por página, cada uno con el primer frame del plano, su número, nombre y duración (frames y segundos).</li>
+          <li>Mientras exporta, mantené la app abierta y en primer plano; podés cancelar. El archivo se descarga al terminar.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
     id: 'atajos', title: 'Atajos de teclado',
     body: () => (
       <table class="keys">

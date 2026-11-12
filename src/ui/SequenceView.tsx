@@ -2,40 +2,17 @@ import { signal } from '@preact/signals';
 import { useEffect, useRef } from 'preact/hooks';
 import { clipId, project, view } from '../model/store';
 import { clipLength, trimRange } from '../model/evaluate';
+import { locate, segments } from '../model/sequence';
+import { playAudio, scrubAudio, stopAudio } from '../audio/engine';
+import { renderOutputFrame } from '../render/output';
+import { AudioTracks } from './AudioTracks';
+import { seqFrame, seqPlaying } from './seqState';
 import type { Clip, Project } from '../model/types';
 import { addClip, deleteClip, openClip, renameClip } from '../model/actions';
 import { copyClip, duplicateClip, moveClip, paste } from '../model/clipboard';
 import { drawingsVersion, loadDrawing } from '../render/drawings';
-import { renderClipFrame } from '../render/compositor';
 
-/** Frame global de la secuencia y reproducción. */
-const seqFrame = signal(0);
-const seqPlaying = signal(false);
 const dragInfo = signal<{ id: string; over: number } | null>(null);
-
-interface Segment {
-  clip: Clip;
-  start: number;
-  a: number;
-  n: number;
-}
-
-function segments(p: Project): Segment[] {
-  let t = 0;
-  return p.clipOrder.map((id) => {
-    const c = p.clips[id];
-    const [a, b] = trimRange(c);
-    const s = { clip: c, start: t, a, n: b - a + 1 };
-    t += s.n;
-    return s;
-  });
-}
-
-function locate(segs: Segment[], gf: number): { seg: Segment; local: number } | null {
-  for (const s of segs) if (gf < s.start + s.n) return { seg: s, local: s.a + (gf - s.start) };
-  const last = segs[segs.length - 1];
-  return last ? { seg: last, local: last.a + last.n - 1 } : null;
-}
 
 const tc = (f: number, fps: number) => {
   const s = Math.floor(f / fps);
@@ -43,14 +20,7 @@ const tc = (f: number, fps: number) => {
 };
 
 function drawClipFrame(canvas: HTMLCanvasElement, p: Project, c: Clip, f: number) {
-  const ctx = canvas.getContext('2d')!;
-  const k = canvas.width / p.width;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.setTransform(k, 0, 0, k, 0, 0);
-  renderClipFrame(ctx, c, f, p.width, p.height, null, null, p);
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  renderOutputFrame(canvas, p, c, f);
 }
 
 function ClipThumb({ c }: { c: Clip }) {
@@ -98,6 +68,7 @@ function Player() {
     for (const id of p.clipOrder) for (const L of p.clips[id].layers) for (const it of L.instances) if (it.drawingId) void loadDrawing(it.drawingId);
     const t0 = performance.now();
     const f0 = seqFrame.peek() >= total - 1 ? 0 : seqFrame.peek();
+    playAudio(p, f0, total);
     let raf = 0;
     const loop = (t: number) => {
       const f = f0 + Math.floor(((t - t0) * p.fps) / 1000);
@@ -110,7 +81,10 @@ function Player() {
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      stopAudio();
+    };
   }, [seqPlaying.value]);
   void ver;
 
@@ -118,6 +92,7 @@ function Player() {
     const el = e.currentTarget as HTMLElement;
     const r = el.getBoundingClientRect();
     seqFrame.value = Math.max(0, Math.min(total - 1, Math.floor(((e.clientX - r.left) / r.width) * total)));
+    scrubAudio(p, seqFrame.value);
   };
 
   return (
@@ -131,7 +106,7 @@ function Player() {
         <span class="grow" />
         <span class="hint">{total} frames · {(total / p.fps).toFixed(1)} s</span>
       </div>
-      <div class="strip" data-help="Tira de la secuencia" data-help-docs="clips" data-help-text="Cada bloque es un plano con su duración relativa. Tocá o arrastrá para hacer scrub. En amarillo, el clip actual." onPointerDown={(e) => {
+      <div class="srow"><span class="slabel">Planos</span><div class="strip" data-help="Tira de la secuencia" data-help-docs="clips" data-help-text="Cada bloque es un plano con su duración relativa. Tocá o arrastrá para hacer scrub. En amarillo, el clip actual." onPointerDown={(e) => {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         seqPlaying.value = false;
         scrub(e);
@@ -142,7 +117,8 @@ function Player() {
           </div>
         ))}
         <div class="seg-ph" style={{ left: (gf / Math.max(1, total)) * 100 + '%' }} />
-      </div>
+      </div></div>
+      <AudioTracks total={total} />
     </div>
   );
 }

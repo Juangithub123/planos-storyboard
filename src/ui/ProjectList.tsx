@@ -5,6 +5,7 @@ import { deleteProject, listProjects, putProject, requestPersistence } from '../
 import { collectGarbage, exportBackup, importBackup } from '../storage/backup';
 import { initDrawings } from '../render/drawings';
 import { initVideos } from '../render/videos';
+import { initAudio } from '../audio/engine';
 import { screen } from './Editor';
 import { DocsModal, docsOpen } from './Help';
 
@@ -20,6 +21,7 @@ const FPS = [12, 24, 25, 30];
 export async function enterProject(p: Project) {
   initDrawings(p.id, p.width, p.height);
   initVideos(p.id);
+  initAudio(p.id, p);
   await collectGarbage(p).catch(() => {});
   openProject(p);
   screen.value = 'editor';

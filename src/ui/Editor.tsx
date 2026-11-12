@@ -6,6 +6,8 @@ import {
   type ShapeKind, type Tool,
 } from '../model/store';
 import { groupOf } from '../model/evaluate';
+import { segments, toSequenceFrame } from '../model/sequence';
+import { playAudio, scrubAudio, stopAudio } from '../audio/engine';
 import { editGroup } from '../model/actions';
 import { applyFloating, cancelFloating, flipFloating, floating } from '../tools/controller';
 import {
@@ -20,6 +22,8 @@ import { Timeline } from './Timeline';
 import { DurationPanel } from './DurationPanel';
 import { PieMenu } from './PieMenu';
 import { SequenceView } from './SequenceView';
+import { CameraPanel } from './CameraPanel';
+import { ExportDialog, exportOpen } from './ExportDialog';
 import { copyInstances, duplicateClip, paste, selectAllClip, splitClipAtPlayhead } from '../model/clipboard';
 
 export const screen = signal<'projects' | 'editor'>('projects');
@@ -43,11 +47,27 @@ export async function doBackup() {
   say('Backup descargado');
 }
 
+/** Audio del proyecto que corresponde a un frame local del clip actual (hasta el fin del loop). */
+function playClipAudio(local: number) {
+  const p = project.peek();
+  const c = clip.peek();
+  if (!p || !c) return;
+  const seg = segments(p).find((s) => s.clip.id === c.id);
+  if (!seg) return;
+  const [, pb] = currentPlayRange();
+  const last = Math.min(seg.a + seg.n - 1, pb);
+  if (local > last) return stopAudio();
+  const toFrame = seg.start + (last - seg.a + 1);
+  if (local < seg.a) playAudio(p, seg.start, toFrame, (seg.a - local) / p.fps);
+  else playAudio(p, seg.start + local - seg.a, toFrame);
+}
+
 function usePlayback() {
   useEffect(() => {
     let raf = 0;
     let t0 = 0;
     let startFrame = 0;
+    let prev = 0;
     const loop = (t: number) => {
       const p = project.peek();
       if (!p || !playing.peek()) return;
@@ -55,6 +75,8 @@ function usePlayback() {
       const n = Math.floor(((t - t0) * p.fps) / 1000);
       const span = b - a + 1;
       const f = a + ((((startFrame - a + n) % span) + span) % span);
+      if (f < prev) playClipAudio(f); // volvió al inicio del loop
+      prev = f;
       if (f !== frame.peek()) frame.value = f;
       raf = requestAnimationFrame(loop);
     };
@@ -64,13 +86,25 @@ function usePlayback() {
         preloadClip();
         const [a, b] = currentPlayRange();
         startFrame = frame.peek() < a || frame.peek() > b ? a : frame.peek();
+        prev = startFrame;
         t0 = performance.now();
+        playClipAudio(startFrame);
         raf = requestAnimationFrame(loop);
-      }
+      } else stopAudio();
+    });
+    // scrub: al mover el cabezal sin reproducir, suena un fragmento
+    const unsubFrame = frame.subscribe((f) => {
+      const p = project.peek();
+      const c = clip.peek();
+      if (!p || !c || playing.peek() || view.peek() !== 'clip') return;
+      const g = toSequenceFrame(segments(p), c.id, f);
+      if (g !== null) scrubAudio(p, g);
     });
     return () => {
       unsub();
+      unsubFrame();
       cancelAnimationFrame(raf);
+      stopAudio();
     };
   }, []);
 }
@@ -187,6 +221,8 @@ function TopBar() {
       </span>
       <button onClick={() => fitRequest.fn()} title="Encuadrar canvas" data-help="Encuadrar"
         data-help-text="Vuelve a centrar y ajustar el lienzo a la pantalla (sin rotación).">⤢</button>
+      <button onClick={() => (exportOpen.value = true)} data-help="Exportar" data-help-docs="exportar"
+        data-help-text="Video del animatic (MP4/WebM con audio), secuencias PNG por clip o por capa (para TVPaint) y PDF de storyboard.">⇪ Exportar</button>
       <button class={needsBackup ? 'warn' : ''} onClick={() => void doBackup()} data-help="Backup" data-help-docs="proyectos"
         data-help-text="Descarga un .planos.zip con todo el proyecto. Se pone rojo si pasó más de un día con cambios sin backup. Se importa desde la lista de proyectos."
         title="Descargar backup .zip del proyecto">{needsBackup ? 'Backup!' : 'Backup'}</button>
@@ -376,6 +412,7 @@ function SidePanel() {
             onInput={(v) => editGroup('opacidad', g.id, (x) => ({ ...x, opacity: v }))} />
         </section>
       )}
+      <CameraPanel />
       <section data-help="Papel cebolla" data-help-docs="cebolla" data-help-text="Cuántos dibujos antes (rojo) y después (verde) mostrar, su opacidad, y si se aplica sólo a la capa actual o a todas.">
         <h4>Papel cebolla</h4>
         <label class="check"><input type="checkbox" checked={o.enabled} onChange={() => (onion.value = { ...o, enabled: !o.enabled })} /> Activado</label>
@@ -416,6 +453,7 @@ export function Editor() {
       <DurationPanel />
       {view.value === 'sequence' && <SequenceView />}
       <PieMenu />
+      <ExportDialog />
       <Toast />
     </div>
   );

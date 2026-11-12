@@ -19,6 +19,7 @@ import {
 import { cleanSelection, copyInstances, copyLayer, paste, selectAllClip, selectionInfo } from '../model/clipboard';
 import { importImageLayer, importVideoLayer } from '../model/references';
 import { drawingsVersion, peekThumb } from '../render/drawings';
+import { AudioHead, AudioLane } from './AudioLane';
 
 // ---------------------------------------------------------------------------
 // Zoom de la timeline (horizontal = ancho de frame, vertical = alto de fila)
@@ -36,6 +37,7 @@ const clampRh = (v: number) => Math.max(RH_MIN, Math.min(RH_MAX, Math.round(v)))
 const groupH = () => Math.max(22, Math.round(rh.value * 0.6));
 
 const HEAD_W = 176;
+const AUDIO_H = 34;
 const RULER_H = 28;
 const px = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v + 'px']));
 const dropMark = signal<{ top: number; h: number; x: number } | null>(null);
@@ -168,13 +170,14 @@ type Drag =
   | { kind: 'rect'; id: number; f0: number; r0: number; additive: boolean };
 
 /** Ajusta el zoom para que entre todo el clip (ancho) y todas las filas (alto). */
-function fitZoom(el: HTMLElement | null, c: Clip) {
+function fitZoom(el: HTMLElement | null, c: Clip, p?: Project) {
   if (!el) return;
   const rows = timelineRows(c);
   const layerRows = rows.filter((r) => r.type === 'layer').length || 1;
   const groupRows = rows.length - layerRows;
   fw.value = clampFw((el.clientWidth - HEAD_W - 24) / (clipLength(c) + 2));
-  const avail = el.clientHeight - RULER_H - 8 - groupRows * Math.max(22, Math.round(rh.peek() * 0.6));
+  const audio = p?.audioTracks?.some((t) => t.clips.length) ? AUDIO_H : 0;
+  const avail = el.clientHeight - RULER_H - 8 - audio - groupRows * Math.max(22, Math.round(rh.peek() * 0.6));
   rh.value = clampRh(avail / layerRows);
 }
 
@@ -229,6 +232,7 @@ export function Timeline() {
     tops.push(acc);
     acc += r.type === 'group' ? gH : rowH;
   }
+  const hasAudio = !!p.audioTracks?.some((t) => t.clips.length);
   const totalH = acc;
   const rowHeight = (i: number) => (rows[i]?.type === 'group' ? gH : rowH);
   const layerOfRow = (i: number): Layer | null => {
@@ -291,6 +295,11 @@ export function Timeline() {
   const onTracksDown = (e: PointerEvent) => {
     if (drag.current) return;
     const target = e.target as HTMLElement;
+    if (target.closest('.alane-wrap')) {
+      playing.value = false;
+      setFrame(frameAt(e));
+      return;
+    }
     const el = e.currentTarget as HTMLElement;
     const selHandle = target.closest('[data-selhandle]') as HTMLElement | null;
     if (selHandle) {
@@ -521,7 +530,7 @@ export function Timeline() {
           <button onClick={() => (rh.value = clampRh(rh.value / 1.25))} title="Filas más bajas">−</button>
           <button onClick={() => (rh.value = clampRh(rh.value * 1.25))} title="Filas más altas">+</button>
           <button onClick={() => { fw.value = FW_DEFAULT; rh.value = RH_DEFAULT; }} title="Zoom normal (reset)">⟲</button>
-          <button onClick={() => fitZoom(scroller.current, c)} title="Ajustar: todo el clip y todas las capas a la vista (fit)">⊡</button>
+          <button onClick={() => fitZoom(scroller.current, c, p)} title="Ajustar: todo el clip y todas las capas a la vista (fit)">⊡</button>
         </div>
         <div class="grp" data-help="Selección y escalado" data-help-docs="seleccion"
           data-help-text="Multi: los toques suman/quitan y arrastrar hace un rectángulo. Todo: selecciona el clip. Prop/Delta: cómo escalan las manijas azules de la selección. Duración…: panel numérico.">
@@ -598,10 +607,11 @@ export function Timeline() {
               {rows.map((r) => r.type === 'group'
                 ? <GroupHeader key={'g' + r.group.id} g={r.group} c={c} />
                 : <LayerHeader key={r.layer.id} L={r.layer} active={r.layer.id === layerId.value} h={rowH} />)}
+              {hasAudio && <AudioHead h={AUDIO_H} />}
             </div>
             <div data-help="Instancias en la timeline" data-help-docs="timeline"
               data-help-text="Cada bloque es una instancia y el número es su duración. Manija gris derecha: estirar/acortar (ripple). Arrastrar una instancia seleccionada: reordenar (táctil: mantener presionado). Con varias seleccionadas aparecen manijas azules para escalar."
-              class={'tracks' + (multiMode.value ? ' multi' : '')} ref={tracksRef} style={px({ width: cols * w, height: totalH })}
+              class={'tracks' + (multiMode.value ? ' multi' : '')} ref={tracksRef} style={px({ width: cols * w, height: totalH + (hasAudio ? AUDIO_H : 0) })}
               onPointerDown={onTracksDown} onPointerMove={onTracksMove} onPointerUp={onTracksUp} onPointerCancel={onTracksUp}>
               {rows.map((r) => r.type === 'group'
                 ? <div key={'g' + r.group.id} class="gtrack" style={px({ height: gH })} />
@@ -618,6 +628,7 @@ export function Timeline() {
                 })} />
               )}
               <div class="playhead" style={px({ left: f * w + w / 2 })} />
+              {hasAudio && <div style={px({ top: totalH })} class="alane-wrap"><AudioLane p={p} c={c} cols={cols} fw={w} h={AUDIO_H} /></div>}
             </div>
           </div>
         </div>

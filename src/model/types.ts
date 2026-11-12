@@ -42,6 +42,44 @@ export interface Group {
   collapsed: boolean;
 }
 
+export interface Cam {
+  /** centro del encuadre, en px del lienzo */
+  x: number;
+  y: number;
+  /** 1 = cuadro completo; 2 = acercamiento al doble */
+  zoom: number;
+  /** grados */
+  rot: number;
+}
+
+export interface Camera {
+  enabled: boolean;
+  start: Cam;
+  end: Cam;
+  ease: 'linear' | 'ease';
+}
+
+export interface AudioClip {
+  id: Id;
+  assetId: Id;
+  name: string;
+  /** frame de la secuencia (proyecto) donde empieza */
+  start: number;
+  /** segundos del archivo que se saltean */
+  srcIn: number;
+  /** segundos que suena */
+  duration: number;
+  volume: number;
+}
+
+export interface AudioTrack {
+  id: Id;
+  name: string;
+  volume: number;
+  muted: boolean;
+  clips: AudioClip[];
+}
+
 export interface Asset {
   name: string;
   mime: string;
@@ -55,6 +93,7 @@ export interface Clip {
   /** capas de arriba (índice 0) hacia abajo */
   layers: Layer[];
   groups?: Group[];
+  camera?: Camera;
   playIn: number | null;
   playOut: number | null;
   trimIn: number | null;
@@ -72,6 +111,7 @@ export interface Project {
   palette: string[];
   /** archivos importados (videos de referencia) */
   assets?: Record<Id, Asset>;
+  audioTracks?: AudioTrack[];
   createdAt: number;
   updatedAt: number;
   lastBackupAt: number;

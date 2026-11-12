@@ -4,6 +4,9 @@ import {
   clip, clipId, fingerDraws, frame, historyHooks, layerId, onion, pieHoldMs, playing, project, redo, tool, undo,
 } from '../model/store';
 import { drawingsVersion } from '../render/drawings';
+import { camAt, camMatrix } from '../model/sequence';
+import { camDrag, camKey, cameraDrag } from '../model/camera';
+import type { Cam, Clip, Project } from '../model/types';
 import { renderClipFrame } from '../render/compositor';
 import { applyFloating, cancelFloating, createToolController, flipFloating, floating, type Pt } from '../tools/controller';
 import { pie } from './PieMenu';
@@ -67,6 +70,34 @@ export function CanvasView() {
       ctx.closePath();
       ctx.stroke();
       tools.overlay(ctx, dpr);
+      drawCameraFrames(ctx, p, c, m);
+    };
+
+    // marcos de cámara: inicio (azul), fin (naranja) y el del frame actual (blanco)
+    const drawCameraFrames = (cx: CanvasRenderingContext2D, p: Project, c: Clip, m: DOMMatrix) => {
+      if (!c.camera?.enabled || playing.peek()) return;
+      const corners = (cam: Cam) => {
+        const inv = camMatrix(cam, p.width, p.height).inverse();
+        return [[0, 0], [p.width, 0], [p.width, p.height], [0, p.height]].map(([x, y]) => {
+          const q = m.transformPoint(inv.transformPoint(new DOMPoint(x, y)));
+          return [q.x * dpr, q.y * dpr];
+        });
+      };
+      const poly = (pts: number[][], color: string, dash: number[], width: number) => {
+        cx.beginPath();
+        pts.forEach(([x, y], i) => (i ? cx.lineTo(x, y) : cx.moveTo(x, y)));
+        cx.closePath();
+        cx.setLineDash(dash);
+        cx.lineWidth = width * dpr;
+        cx.strokeStyle = color;
+        cx.stroke();
+        cx.setLineDash([]);
+      };
+      const key = camKey.peek();
+      poly(corners(c.camera.start), '#4d7cff', key === 'start' ? [] : [8, 6], key === 'start' ? 2.5 : 1.5);
+      poly(corners(c.camera.end), '#f2a33a', key === 'end' ? [] : [8, 6], key === 'end' ? 2.5 : 1.5);
+      const cur = camAt(c, frame.peek());
+      if (cur) poly(corners(cur), 'rgba(255,255,255,.85)', [3, 4], 1);
     };
     const requestRender = () => {
       if (!raf) raf = requestAnimationFrame(render);
@@ -100,7 +131,7 @@ export function CanvasView() {
 
     const dispose = effect(() => {
       // dependencias de render
-      project.value; clipId.value; frame.value; onion.value; drawingsVersion.value; layerId.value; playing.value; floating.value;
+      project.value; clipId.value; frame.value; onion.value; drawingsVersion.value; layerId.value; playing.value; floating.value; camKey.value;
       requestRender();
     });
     // la selección flotante se confirma al cambiar de frame, capa, clip o herramienta
@@ -128,8 +159,25 @@ export function CanvasView() {
       const pt = matrix().inverse().transformPoint(new DOMPoint(e.clientX - r.left, e.clientY - r.top));
       return { x: pt.x, y: pt.y };
     };
-    const beginStroke = (e: PointerEvent) => tools.down(e, toProject(e), local(e));
-    const endStroke = (cancel = false) => tools.up(cancel);
+    // arrastre de cámara (modo ✥ Mover del panel de cámara)
+    let camMove: { drag: NonNullable<ReturnType<typeof cameraDrag>>; p0: Pt } | null = null;
+    const beginStroke = (e: PointerEvent) => {
+      if (camDrag.peek() && clip.peek()?.camera?.enabled) {
+        const drag = cameraDrag();
+        if (!drag) return false;
+        camMove = { drag, p0: toProject(e) };
+        return true;
+      }
+      return tools.down(e, toProject(e), local(e));
+    };
+    const endStroke = (cancel = false) => {
+      if (camMove) {
+        if (!cancel) camMove.drag.end();
+        camMove = null;
+        return;
+      }
+      tools.up(cancel);
+    };
 
     // ---------------- gestos táctiles
     const touches = new Map<number, { x: number; y: number }>();
@@ -250,7 +298,10 @@ export function CanvasView() {
     const onMove = (e: PointerEvent) => {
       if (hold && hold.id === e.pointerId && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 8) cancelHold();
       if (e.pointerId === penId) {
-        tools.move(e, toProject, local(e));
+        if (camMove) {
+          const q = toProject(e);
+          camMove.drag.move(q.x - camMove.p0.x, q.y - camMove.p0.y);
+        } else tools.move(e, toProject, local(e));
         return;
       }
       if (!touches.has(e.pointerId)) return;

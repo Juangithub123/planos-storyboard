@@ -277,3 +277,47 @@ kbd { background: var(--bg3); border: 1px solid var(--line); border-bottom-width
 .float-bar { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px 8px;
   background: #1e1f24ee; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 4px 16px #000a; z-index: 2; max-width: calc(100% - 20px); }
 .float-bar .hint { margin: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- fase 4: audio */
+.player { height: auto; }
+.player-stage { flex: 0 0 auto; height: 34vh; }
+.srow { display: flex; align-items: center; margin: 0 8px 8px 0; }
+.slabel { width: 170px; flex-shrink: 0; font-size: 12px; color: var(--fg2); padding-left: 10px; }
+.srow .strip { flex: 1; margin: 0; }
+.atracks { border-top: 1px solid var(--line); padding: 6px 8px 8px 0; }
+.atools { display: flex; align-items: center; gap: 6px; padding: 0 0 6px 10px; flex-wrap: wrap; }
+.atools button { min-height: 30px; font-size: 12px; }
+.aedit { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; background: var(--bg3); border-radius: 8px; padding: 3px 8px; }
+.aedit input[type=number] { width: 62px; min-height: 26px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 0 4px; }
+.aedit input[type=range] { width: 80px; vertical-align: middle; }
+.aedit button { min-height: 26px; }
+.alist { max-height: 22vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.atrack { display: flex; align-items: stretch; }
+.athead { width: 170px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 6px 0 10px; font-size: 12px; }
+.atrack.cur .athead { color: var(--accent); }
+.atname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.athead input[type=range] { width: 52px; }
+.athead .ib { min-width: 24px; width: 24px; min-height: 24px; height: 24px; padding: 0; font-size: 11px; }
+.alanes { flex: 1; position: relative; height: 34px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+.alanes.muted { opacity: .45; }
+.aclip { position: absolute; top: 2px; bottom: 2px; background: #2c4a3d; border: 1px solid #4bb37a; border-radius: 4px; overflow: hidden; touch-action: none; cursor: grab; }
+.aclip.sel { border: 2px solid var(--accent); }
+.aclip span { position: absolute; left: 4px; top: 1px; font-size: 10px; color: #dff5e9; text-shadow: 0 0 3px #000; pointer-events: none; white-space: nowrap; }
+.awave { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.ahead { display: flex; align-items: center; justify-content: space-between; padding: 0 6px; font-size: 12px; color: #9fe0bd; border-top: 1px solid var(--line); background: #24302b; }
+.ahead .ib { min-width: 28px; width: 28px; min-height: 26px; height: 26px; padding: 0; }
+.alane-wrap { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); background: #1f2a26; }
+.alane canvas { display: block; }
+
+/* ---------- export y cámara */
+.exp { width: min(620px, 100%); background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 20px 18px; max-height: 100%; overflow-y: auto; }
+.exp h2 { margin: 4px 0 10px; font-size: 20px; }
+.exp-body { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.exp-body p { margin: 0; color: var(--fg2); line-height: 1.45; }
+.exp-body .primary { align-self: flex-start; min-height: 40px; padding: 0 18px; }
+.exp-progress { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.exp-progress .bar { flex: 1; height: 10px; background: var(--bg3); border-radius: 5px; overflow: hidden; }
+.exp-progress .bar div { height: 100%; background: var(--accent); transition: width .2s; }
+.exp-result { margin: 12px 0 0; color: #9fe0bd; }
+.cam-s.on { border-color: #4d7cff; color: #8fa3ff; background: #1f2a4d; }
+.cam-e.on { border-color: #f2a33a; color: #f2b84b; background: #3a2c14; }
